@@ -45,3 +45,16 @@ def test_docx_is_a_word_file_with_the_accounts_and_notes():
     assert am.name in text and "Ask about promotion" in text and "This week's accounts" in text
     assert all(r["account"].name in cells for r in d["rows"])
     s.close()
+
+
+def test_banner_flags_the_stale_gong_source_with_affected_accounts():
+    import web
+    from sqlalchemy import select
+    from models import User
+    s, _ = _am()
+    alerts = {u.id: web.source_alerts(s, u) for u in s.scalars(select(User).where(User.role == "am"))}
+    gong = [a for als in alerts.values() for a in als if a["source"] == "gong"]
+    assert gong and all(a["state"] == "out of date" and a["days"] > 7 and a["owner"] == "Gong admins" for a in gong)
+    assert any(a["accounts"] for a in gong) and all(isinstance(n, str) for a in gong for _, n in a["accounts"])
+    assert not any(a["source"] == "payments_db" for als in alerts.values() for a in als)
+    s.close()

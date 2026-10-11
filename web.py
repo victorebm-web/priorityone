@@ -45,10 +45,38 @@ def current_user(request: Request, s) -> User:
     return user
 
 
+def source_alerts(s, user: User) -> list:
+    """Sources that are out of date or not connected, plus a failed weekly job, for the banner on every page.
+    Each item counts how many of the user's accounts this week are marked "Data incomplete" because of it."""
+    from db import current_week_start, today
+    from jobs import STALE_AFTER_DAYS, source_freshness
+    from models import JobRun
+    day, week = today(), current_week_start()
+    snaps = list(s.scalars(select(PrioritySnapshot).where(PrioritySnapshot.user_id == user.id,
+                                                          PrioritySnapshot.week_start == week)))
+    names = dict(s.execute(select(Account.id, Account.name).where(Account.id.in_([p.account_id for p in snaps]))).all())
+    out = []
+    # Same rule as the weekly job (and so the "Data incomplete" badges): measured from this week's Monday.
+    for src, f in source_freshness(s, week).items():
+        if not f["stale"]:
+            continue
+        days = (day - f["newest"]).days if f["newest"] else None
+        out.append({"source": src, "label": ui.SOURCE_LABELS.get(src, src), "newest": f["newest"], "days": days,
+                    "state": "not connected" if f["newest"] is None else "out of date", "limit": STALE_AFTER_DAYS,
+                    "affects": ui.SOURCE_AFFECTS.get(src, "its signals"), "owner": ui.SOURCE_OWNERS.get(src),
+                    "accounts": sorted(((p.account_id, names[p.account_id]) for p in snaps if src in (p.stale_sources or [])),
+                                       key=lambda x: x[1])})
+    last = s.scalars(select(JobRun).where(JobRun.week_start == week).order_by(JobRun.started_at.desc())).first()
+    if last is not None and last.status == "failed":
+        out.append({"source": "job", "label": "This week's scoring", "state": "failed", "newest": None, "days": None,
+                    "affects": "the list", "owner": "GTM Engineering", "accounts": [], "limit": None})
+    return out
+
+
 def render(request: Request, s, name: str, ctx: dict, user: User):
     users = list(s.scalars(select(User).where(User.role == "am") if AM_ONLY else select(User).order_by(User.role, User.id)))
     resp = templates.TemplateResponse(request, name, {**ctx, "user": user, "users": users, "am_only": AM_ONLY,
-                                                      "path": request.url.path})
+                                                      "path": request.url.path, "source_alerts": source_alerts(s, user)})
     resp.set_cookie(USER_COOKIE, str(user.id), samesite="lax")
     return resp
 

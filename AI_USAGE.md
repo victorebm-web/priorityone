@@ -27,7 +27,7 @@ the app as an Account Manager would.
 
 ## How I checked it
 
-- **Automated tests (64).** Scoring maths, decay, root-cause grouping, suppression, the weekly job's
+- **Automated tests (65).** Scoring maths, decay, root-cause grouping, suppression, the weekly job's
   idempotency, contacts, escalation routing, explanations and Salesforce Task creation.
 - **Planted = detected.** The seed plants specific stories (e.g. a volume drop at Tunebox, a champion
   leaving). Tests check that each one is detected and lands where expected, and that healthy

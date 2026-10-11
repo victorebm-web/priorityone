@@ -15,6 +15,17 @@ CATEGORY_PILL = {
 }
 SOURCE_LABELS = {"salesforce": "Salesforce", "payments_db": "Payments DB", "gong": "Gong", "survey": "NPS survey",
                  "slack": "Slack", "support": "Support"}
+# What each source feeds, and the team that owns it. Used by the "Data incomplete" box and the source banner.
+SOURCE_AFFECTS = {
+    "gong": "call sentiment, product interest and \"gone quiet\" signals",
+    "salesforce": "renewals, QBRs, contacts and exec activity",
+    "payments_db": "volume, authorisation rate, chargebacks and payouts",
+    "support": "open sev-1 tickets",
+    "slack": "contact changes mentioned in shared channels",
+    "survey": "NPS scores",
+}
+SOURCE_OWNERS = {"gong": "Gong admins", "salesforce": "Salesforce Ops", "payments_db": "Data Engineering",
+                 "support": "Support Ops", "slack": "Slack admins", "survey": "Customer Insights"}
 # One quiet style for every source, in the Adyen manner: colour is reserved for state and action.
 SOURCE_BADGE = {src: "bg-slate-50 text-slate-700 ring-slate-200 hover:bg-slate-100"
                 for src in ("salesforce", "payments_db", "gong", "slack", "support", "survey")}
@@ -81,7 +92,7 @@ def register(templates) -> None:
         CATEGORY_LABELS=CATEGORY_LABELS, CATEGORY_PILL=CATEGORY_PILL, SOURCE_LABELS=SOURCE_LABELS,
         SOURCE_BADGE=SOURCE_BADGE, SEVERITY_BADGE=SEVERITY_BADGE, ACTION_LABELS=ACTION_LABELS,
         REASON_LABELS=REASON_LABELS, SF_STATUS_PILL=SF_STATUS_PILL, SF_STATUS_LABELS=SF_STATUS_LABELS,
-        ESCALATION_LABELS=ESCALATION_LABELS,
+        ESCALATION_LABELS=ESCALATION_LABELS, SOURCE_AFFECTS=SOURCE_AFFECTS, SOURCE_OWNERS=SOURCE_OWNERS,
     )
 
 

@@ -144,7 +144,11 @@ one wrong would change the design.
 ### Freshness
 34. **Every source has an ingestion log** with the last successful sync date. A source more than 7 days
     behind the week being scored is stale.
-35. **Stale data should badge, not block.** A partial list with a warning is more useful than no list.
+35. **Stale data should badge, not block, and be said once at the top.** Each affected account carries
+    "Data incomplete", and a banner on every page names the source, when it last synced, the affected
+    accounts and the owning team, so the AM hears about a broken source before reading the list.
+    Freshness is measured from Monday, as the weekly job does, so the banner and the badges always agree.
+    **Badge, not block.** A partial list with a warning is more useful than no list.
     In production a severe outage (e.g. no payments data) should block the run instead.
 
 

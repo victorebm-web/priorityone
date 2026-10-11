@@ -138,6 +138,46 @@
       </div>
     </div>
   </header>
+  {# Source banner: a connected tool that is out of date, not connected, or a failed weekly job. Complements "Data incomplete". #}
+  {% if source_alerts %}
+    <div class="border-b border-amber-200 bg-amber-50 print:hidden" role="status" aria-label="Data source issues">
+      <div class="mx-auto max-w-6xl space-y-1.5 px-4 py-2.5">
+        {% for al in source_alerts %}
+          <div class="flex items-start gap-2.5 text-[13px] text-amber-900" data-source-alert="{{ al.source }}-{{ al.newest.isoformat() if al.newest else al.state }}">
+            <span class="mt-0.5 shrink-0 text-amber-700">{{ icon.alert("h-4 w-4") }}</span>
+            <p class="min-w-0 flex-1 leading-relaxed">
+              <b>{{ al.label }} {{ 'is ' ~ al.state if al.source != 'job' else al.state }}</b>
+              {% if al.source == 'job' %}
+                · This week's list couldn't be refreshed, so you're seeing the last list that ran.
+              {% elif al.state == 'not connected' %}
+                · No sync received yet.
+              {% else %}
+                · Last synced {{ al.newest | short_date }}, {{ al.days }} days ago (expected at least every {{ al.limit }} days).
+              {% endif %}
+              {% if al.source != 'job' %}
+                Its signals ({{ al.affects }}) may be missing or old{% if al.accounts %}. Check {{ al.label }} before acting on {{ 'these' if al.accounts | length > 1 else 'this' }} {{ al.accounts | length }} account{{ 's' if al.accounts | length > 1 }}, marked <span class="whitespace-nowrap rounded-full bg-white/70 px-1.5 ring-1 ring-inset ring-amber-300">Data incomplete</span>:
+                {% for id, nm in al.accounts[:6] %}<a href="/account/{{ id }}" class="font-medium underline decoration-amber-400 underline-offset-2 hover:text-amber-950">{{ nm }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if al.accounts | length > 6 %} and {{ al.accounts | length - 6 }} more{% endif %}{% endif %}.
+              {% endif %}
+              {% if al.owner %}<span class="text-amber-800/80">Owner: {{ al.owner }}.</span>{% endif %}
+            </p>
+            <button type="button" class="shrink-0 rounded px-1.5 py-0.5 text-[12px] text-amber-800 hover:bg-amber-100" data-hide-alert title="Hide until this source syncs again">Hide</button>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    <script>
+      document.querySelectorAll("[data-source-alert]").forEach(el => {
+        const key = "p1-hide-" + el.dataset.sourceAlert;
+        try { if (localStorage.getItem(key)) el.remove(); } catch (e) {}
+        el.querySelector("[data-hide-alert]").addEventListener("click", () => {
+          try { localStorage.setItem(key, "1"); } catch (e) {}
+          const box = el.parentElement.parentElement; el.remove();
+          if (!box.querySelector("[data-source-alert]")) box.remove();
+        });
+      });
+      document.querySelectorAll('[aria-label="Data source issues"]').forEach(b => { if (!b.querySelector("[data-source-alert]")) b.remove(); });
+    </script>
+  {% endif %}
   <main id="main" class="mx-auto max-w-6xl px-4 pb-10 pt-6">
     {% block content %}{% endblock %}
   </main>
