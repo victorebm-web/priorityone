@@ -1,0 +1,24 @@
+{# "Data incomplete" pill with an information box on hover or keyboard focus.
+   Expects: stale (list of source keys), freshness (source -> {newest}), ref_day (date). #}
+{% set affects = {
+  "gong": "call sentiment, product interest and \"gone quiet\" signals",
+  "salesforce": "renewals, QBRs, contacts and exec activity",
+  "payments_db": "volume, authorisation rate, chargebacks and payouts",
+  "support": "open sev-1 tickets",
+  "slack": "contact changes mentioned in shared channels",
+  "survey": "NPS scores",
+} %}
+<span class="tip" tabindex="0" aria-describedby="tip-{{ tip_id }}">
+  <span class="pill cursor-help bg-amber-50 text-amber-800 ring-amber-300">{{ icon.alert("h-3 w-3") }} Data incomplete</span>
+  <span role="tooltip" id="tip-{{ tip_id }}" class="tip-box">
+    <span class="block font-semibold">Scored with out-of-date data</span>
+    {% for src in stale %}
+      {% set newest = freshness[src].newest if freshness.get(src) else None %}
+      <span class="mt-1.5 block">
+        <b>{{ SOURCE_LABELS.get(src, src) }}</b> last synced {% if newest %}{{ newest | short_date }} ({{ (ref_day - newest).days }} days ago){% else %}never{% endif %}.
+        Signals from it ({{ affects.get(src, 'its signals') }}) may be missing or old.
+      </span>
+    {% endfor %}
+    <span class="mt-1.5 block text-white/70">The ranking may miss a problem or show one that's already fixed. Check {% for src in stale %}{{ SOURCE_LABELS.get(src, src) }}{{ ' and ' if not loop.last }}{% endfor %} before you act. Sync status is on the Health page.</span>
+  </span>
+</span>

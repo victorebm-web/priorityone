@@ -1,0 +1,669 @@
+{% extends "base.html" %}
+{% block title %}{{ a.name }} · PriorityOne{% endblock %}
+{% block content %}
+{% set here = "/account/" ~ a.id %}
+{% set email_default = contacts | selectattr("id", "equalto", compose_json.default_contact) | first %}
+<a href="/?week={{ selected.isoformat() }}#acct-{{ a.id }}" class="btn-ghost btn-sm -ml-2">{{ icon.back("h-3.5 w-3.5") }} Back to your list</a>
+
+{# ---- Header ---- #}
+<section class="card mt-2 p-5">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div class="min-w-0">
+      <div class="flex flex-wrap items-center gap-2">
+        <h1 class="page-title">{{ a.name }}</h1>
+        {% if result.category %}<span class="pill {{ CATEGORY_PILL[result.category] }}">{{ CATEGORY_LABELS[result.category] }}</span>{% endif %}
+        {% if first_year %}<span class="pill bg-blue-50 text-blue-700 ring-blue-200">First year</span>{% endif %}
+        {% if snap and snap.partial %}
+          {% with stale = snap.stale_sources, ref_day = today_d, tip_id = 'acct' %}{% include "_stale_badge.html" %}{% endwith %}
+        {% endif %}
+      </div>
+      <p class="page-sub">{{ a.segment }} · {{ a.vertical | capitalize }} · {{ a.region }} · owned by {{ a.owner.name }} · {{ selected | week_label }}{{ ' (current)' if is_current }}</p>
+    </div>
+    <div class="text-right">
+      {% if revenue_at_risk %}
+        <div class="text-[26px] font-semibold leading-none tabular-nums text-red-800">{{ revenue_at_risk | money }}</div>
+        <div class="mt-1 text-xs text-slate-500">annualised revenue at risk</div>
+      {% endif %}
+      <details class="mt-1 text-xs text-slate-500">
+        <summary class="inline-flex items-center gap-1 hover:text-slate-900">Score {{ '%.0f' % result.score }}{% if snap %} · #{{ snap.rank }} in the book{% endif %} · how is this scored? {{ icon.info("h-3.5 w-3.5") }}</summary>
+        <div class="mt-2 max-w-xs rounded-lg bg-slate-50 p-3 text-left text-slate-600">
+          Importance {{ '%.2f' % result.importance }}{% if first_year %} (incl. ×1.15 first year){% endif %} × urgency {{ '%.1f' % result.urgency }}{% if result.suppressed %} × 0.15 (hidden after feedback){% endif %}.
+          Importance comes from segment and ARR; urgency from the signals below, fading over time. <a href="/scorecard" class="link">See the full scorecard</a>
+        </div>
+      </details>
+    </div>
+  </div>
+    <div class="mt-4 flex flex-wrap gap-2">
+      {% if email_default %}<a href="#messages" class="btn-primary" data-compose="{{ email_default.id }}">{{ icon.send() }} Email {{ email_default.first }}</a>{% endif %}
+      {% if can_create and sf_prefill %}<a href="/salesforce/tasks/new?account_id={{ a.id }}&next={{ ('/account/' ~ a.id) | urlencode }}" class="btn-sf">{{ icon.task("h-4 w-4") }} Create Task in Salesforce</a>{% endif %}
+      {% if can_create %}<a href="#messages" class="btn-secondary" data-to="{{ escalate_to.team if escalate_to else 'manager' }}">{{ icon.escalate() }} Escalate{% if escalate_to %} to {{ {'support': 'Support', 'risk': 'Risk', 'finance': 'Finance', 'product': 'Product'}.get(escalate_to.team, escalate_to.name.split()[0]) }}{% endif %}</a>{% endif %}
+      <a href="/account/{{ a.id }}/plan" class="btn-ghost">Mutual action plan{% if plan_steps %} · {{ plan_progress.done }}/{{ plan_progress.total }}{% endif %}</a>
+    </div>
+
+  {% for f in fixes if f.status == 'open' %}
+    <div class="mt-4 flex gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+      {{ icon.alert() }}<p><b>Data flagged as wrong:</b> {{ f.field_label }} ({{ SOURCE_LABELS.get(f.source_system, f.source_system) }}){% if f.suggested_value %}, should be “{{ f.suggested_value }}”{% endif %}. With {{ f.owner_team }} since {{ f.created_at | short_date }}.</p>
+    </div>
+  {% endfor %}
+
+  <dl class="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-slate-100 pt-4 text-sm md:grid-cols-5">
+    {% macro fact(label, value, sub=None, tone="") %}
+      <div><dt class="eyebrow">{{ label }}</dt><dd class="mt-1 font-medium {{ tone }}">{{ value }}</dd>{% if sub %}<dd class="text-xs text-slate-500">{{ sub }}</dd>{% endif %}</div>
+    {% endmacro %}
+    {{ fact("ARR", a.arr_usd | money, ("customer since " ~ (a.customer_since | short_date)) if first_year else ("customer since " ~ a.customer_since.year)) }}
+    {{ fact("Primary contact", a.primary_contact_name, ("replaced " ~ a.previous_contact_name ~ " " ~ (a.contact_changed_on | short_date)) if a.previous_contact_name else ("CSM: " ~ a.csm_name)) }}
+    {{ fact("Renewal", a.renewal_date | nice_date, ("in " ~ days_to_renewal ~ " days") if days_to_renewal >= 0 else "passed", "text-red-700" if 0 <= days_to_renewal <= 60 else "") }}
+    {{ fact("Last QBR", a.last_qbr_date | nice_date, days_since_qbr ~ " days ago", "text-amber-700" if days_since_qbr > 180 else "") }}
+    <div class="col-span-2 md:col-span-1"><dt class="eyebrow">Payment methods</dt>
+      <dd class="mt-1 flex flex-wrap gap-1">{% for m in methods %}<span class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-700">{{ method_labels.get(m.method, m.method) }}</span>{% endfor %}</dd></div>
+  </dl>
+</section>
+
+{# ---- In-page navigation ---- #}
+<nav class="no-scrollbar sticky top-[57px] z-30 -mx-4 mt-4 overflow-x-auto border-b border-slate-200 bg-slate-50/95 px-4 backdrop-blur" aria-label="Sections">
+  <div class="flex gap-1 py-2 text-sm">
+    {% for href, label in [("#why", "Why it's here"), ("#steps", "Next steps"), ("#contacts", "Contacts"), ("#messages", "Email & escalate"), ("#sf-tasks", "Salesforce Tasks"), ("#trends", "Trends"), ("#relationship", "Relationship"), ("#calls", "Calls")] %}
+      <a href="{{ href }}" class="whitespace-nowrap rounded-md px-2.5 py-1 text-slate-600 hover:bg-white hover:text-slate-900">{{ label }}</a>
+    {% endfor %}
+  </div>
+</nav>
+
+<div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="lg:col-span-2 space-y-6">
+
+    {# ---- Why this is on your list ---- #}
+    <section class="card scroll-mt-32" id="why">
+      <h2 class="section-title px-5 pt-5">Why it's on your list</h2>
+      {% if result.resurfaced %}
+        <p class="mx-4 mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">↑ Resurfaced: the signal worsened by more than 30% since it was dismissed, so suppression is lifted.</p>
+      {% elif result.suppressed %}
+        <p class="mx-4 mt-2 rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700">Suppressed after recent feedback: score is multiplied by 0.15 (would be {{ '%.0f' % result.raw_score }}) until it worsens by more than 30%.</p>
+      {% endif %}
+      {% if result.contributions %}
+        {# In words first #}
+        {% if why_summary %}<p class="mx-5 mt-3 text-[15px] leading-relaxed text-slate-800">{{ why_summary }}</p>{% endif %}
+
+        {# Each reason: what happened, why it counts, how much of the score it drives #}
+        <ul class="mx-5 mt-4 space-y-3">
+          {% for c, w in why_rows %}
+            <li class="rounded-lg border border-slate-200 p-3.5">
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span class="h-2 w-2 shrink-0 rounded-full {{ 'bg-red-700' if c.severity == 'high' else ('bg-amber-500' if c.severity == 'medium' else 'bg-slate-300') }}"></span>
+                <span class="font-semibold text-slate-900">{{ w.label }}</span>
+                <a href="{{ c.source_ref }}" target="_blank" rel="noopener" class="chip {{ SOURCE_BADGE.get(c.source_system, '') }} hover:underline">{{ SOURCE_LABELS.get(c.source_system, c.source_system) }} {{ icon.external("h-2.5 w-2.5") }}</a>
+                {% set tk = open_by_signal.get(c.signal_id) %}
+                {% if tk %}<a href="https://adyen.my.salesforce.com/{{ tk.salesforce_id }}" target="_blank" rel="noopener" class="chip {{ sf_status_pill[tk.status] }} hover:underline">SF Task · {{ tk.status_label }}</a>
+                {% elif can_create and c.signal_id %}<a href="/salesforce/tasks/new?account_id={{ a.id }}&signal_id={{ c.signal_id }}&next={{ ('/account/' ~ a.id) | urlencode }}" class="chip bg-white text-[#0176D3] ring-[#0176D3]/40 hover:bg-[#EEF4FF]">{{ icon.task("h-3 w-3") }} Create Task</a>{% endif %}
+                <span class="ml-auto text-[12px] tabular-nums text-slate-500">{{ w.share }}% of the score</span>
+              </div>
+              <p class="mt-1.5 text-sm text-slate-800">{{ c.sentence }}</p>
+              <p class="mt-1 text-[13px] text-slate-500">{{ w.text }}</p>
+              <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" role="img" aria-label="{{ w.share }}% of the score">
+                <div class="h-full rounded-full {{ 'bg-red-700' if c.category == 'act_now' else 'bg-amber-300' }}" style="width: {{ w.share }}%"></div>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+
+        {# The numbers, for anyone who wants them #}
+        <details class="group mx-5 mb-4 mt-3">
+          <summary class="inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-900">
+            <span class="transition-transform group-open:rotate-90">{{ icon.arrow("h-3.5 w-3.5") }}</span> Show the maths</summary>
+          <div class="-mx-5 mt-2">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-100">
+              <tr><th class="px-4 py-2 font-medium">Signal</th><th class="px-2 py-2 font-medium">Severity</th><th class="px-2 py-2 font-medium">Age</th>
+                  <th class="px-2 py-2 font-medium whitespace-nowrap" title="base weight × severity × decay">Urgency</th><th class="px-2 py-2 font-medium text-right">Points</th><th class="px-4 py-2 font-medium">Source</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              {% for c in result.contributions %}
+                <tr class="align-top">
+                  <td class="px-4 py-2">
+                    <div class="font-medium text-slate-800">{{ c.signal_type.replace('_', ' ') | capitalize }}</div>
+                    <div class="text-slate-600">{{ c.sentence }}</div>
+                    {% if c.related_to %}<div class="text-xs text-slate-400">Likely the same {{ 'incident' if c.group == 'incident' else 'relationship issue' }} as the {{ c.related_to.replace('_', ' ') }}, so counted at 50%.</div>{% endif %}
+                  </td>
+                  <td class="px-2 py-2 {{ SEVERITY_BADGE[c.severity] }}">{{ c.severity }}</td>
+                  <td class="px-2 py-2 whitespace-nowrap text-slate-600">{{ c.age_days }}d</td>
+                  <td class="px-2 py-2 whitespace-nowrap text-slate-500 tabular-nums text-xs">{{ c.base_weight | int }} × {{ c.severity_multiplier }} × {{ '%.2f' % c.decay }}<br>= {{ '%.1f' % c.urgency }}</td>
+                  <td class="px-2 py-2 text-right font-medium tabular-nums">{{ '%.1f' % c.points }}</td>
+                  <td class="px-4 py-2 whitespace-nowrap">
+                    <a href="{{ c.source_ref }}" target="_blank" rel="noopener"
+                       class="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset {{ SOURCE_BADGE.get(c.source_system, '') }} hover:underline">{{ SOURCE_LABELS.get(c.source_system, c.source_system) }} ↗</a>
+                    {% set tk = open_by_signal.get(c.signal_id) %}
+                    {% if tk %}
+                      <a href="https://adyen.my.salesforce.com/{{ tk.salesforce_id }}" target="_blank" rel="noopener" class="mt-1 flex w-fit rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset {{ sf_status_pill[tk.status] }} hover:underline">SF Task · {{ tk.status_label }} ↗</a>
+                    {% elif can_create and c.signal_id in sf_prefill %}
+                      <a href="#sf-tasks" data-pick-signal="{{ c.signal_id }}" class="pick-signal mt-1 flex w-fit rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-300 hover:bg-slate-900 hover:text-white">+ Create Task</a>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot class="border-t border-slate-200 text-sm">
+              <tr><td class="px-4 py-2 text-slate-500" colspan="3">Total (× importance {{ '%.2f' % result.importance }})</td>
+                  <td class="px-2 py-2 tabular-nums text-xs text-slate-500">{{ '%.1f' % result.urgency }}</td>
+                  <td class="px-2 py-2 text-right font-semibold tabular-nums">{{ '%.1f' % result.raw_score }}</td><td></td></tr>
+            </tfoot>
+          </table>
+        </div>
+            <p class="px-4 pb-1 pt-1 text-xs text-slate-400">Points = weight × severity × freshness (halves every 21 days, dropped after 60) × importance (segment and size). <a href="/scorecard" class="link">Full scorecard</a></p>
+          </div>
+        </details>
+      {% else %}
+        <p class="px-4 py-4 text-sm text-slate-500">No active signals this week. This account is not on anyone's focus list.</p>
+      {% endif %}
+    </section>
+
+    {# ---- Suggested next steps ---- #}
+    <section class="card card-pad scroll-mt-32" id="steps">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 class="section-title">Suggested next steps</h2>
+        <span class="text-xs text-slate-400">One per reason, with the right contact</span>
+      </div>
+      {% if steps %}
+        <ul class="mt-3 space-y-2.5">{% for st in steps %}{% with primary = loop.first, can_add = can_create, show_email = True %}{% include "_step.html" %}{% endwith %}{% endfor %}</ul>
+      {% else %}
+        <p class="mt-2 text-sm text-slate-700">{{ next_action }}</p>
+      {% endif %}
+    </section>
+
+    {# ---- Contacts ---- #}
+    {% macro contact_row(v, best=False) %}
+      {% set days = (today_d - v.last_contact).days if v.last_contact else None %}
+      <li class="flex items-start gap-3 py-3">
+        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold {{ 'bg-emerald-100 text-emerald-800' if best else 'bg-slate-100 text-slate-600' }}" aria-hidden="true">{{ v.name.split()[0][0] }}{{ v.name.split()[-1][0] }}</span>
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span class="font-medium {{ 'text-slate-400' if not v.active }}">{{ v.name }}</span>
+            {% if best %}<span class="pill bg-emerald-50 text-emerald-800 ring-emerald-200">Best <span class="hidden sm:inline">to contact </span>this week</span>{% endif %}
+            {% if v.is_primary %}<span class="pill bg-slate-100 text-slate-700 ring-slate-200">Primary</span>{% endif %}
+            <span class="chip bg-white text-slate-600 ring-slate-200">{{ v.role_label }}</span>
+          </div>
+          <div class="text-[13px] text-slate-500">{{ v.title }} ·
+            {% if not v.active %}left {{ v.left_on | short_date }}
+            {% elif days is none %}<span class="{{ 'text-amber-800' if v.role == 'exec_sponsor' }}">no contact logged</span>
+            {% else %}<span class="{{ 'font-medium text-amber-800' if days > 90 else '' }}">last contact {{ 'today' if days == 0 else (days ~ ' day' ~ ('s' if days != 1) ~ ' ago') }}</span>{% endif %}
+          </div>
+          {% if v.active and v.why %}<div class="mt-1 text-[13px] text-slate-700">{{ v.why[:2] | join(" · ") }}</div>{% endif %}
+        </div>
+        <div class="flex shrink-0 items-center gap-1">
+          {% if v.active %}<a href="#messages" data-compose="{{ v.id }}" class="btn-secondary btn-sm" aria-label="Email {{ v.name }}">{{ icon.send("h-3.5 w-3.5") }}<span class="hidden sm:inline">Email</span></a>{% endif %}
+          <a href="https://adyen.my.salesforce.com/{{ v.salesforce_id }}" target="_blank" rel="noopener" class="btn-ghost btn-sm px-2" title="Open {{ v.name }} in Salesforce" aria-label="Open {{ v.name }} in Salesforce">{{ icon.external() }}</a>
+        </div>
+      </li>
+    {% endmacro %}
+    <section class="card card-pad scroll-mt-32" id="contacts">
+      {% set active_contacts = contacts | selectattr("active") | list %}
+      {% set gone = contacts | rejectattr("active") | list %}
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 class="section-title">Contacts <span class="font-normal text-slate-400">{{ active_contacts | length }}</span></h2>
+        <span class="text-xs text-slate-400">From Salesforce, ranked for this week. Call history from Gong.</span>
+      </div>
+      {% if active_contacts %}
+        <ul class="mt-1 divide-y divide-slate-100">{% for v in active_contacts[:4] %}{{ contact_row(v, loop.first and v.score > 0.3) }}{% endfor %}</ul>
+        {% if active_contacts | length > 4 %}
+          <details class="border-t border-slate-100">
+            <summary class="inline-flex items-center gap-1 pt-2.5 text-[13px] text-slate-500 hover:text-slate-900">{{ active_contacts | length - 4 }} more contact{{ 's' if active_contacts | length > 5 }}</summary>
+            <ul class="divide-y divide-slate-100">{% for v in active_contacts[4:] %}{{ contact_row(v) }}{% endfor %}</ul>
+          </details>
+        {% endif %}
+      {% else %}
+        <p class="mt-2 text-sm text-slate-500">No contacts in Salesforce for this account.</p>
+      {% endif %}
+      {% if gone %}
+        <details class="mt-1 border-t border-slate-100">
+          <summary class="inline-flex items-center gap-1 pt-2.5 text-[13px] text-slate-500 hover:text-slate-900">{{ gone | length }} left the company</summary>
+          <ul class="divide-y divide-slate-100">{% for v in gone %}{{ contact_row(v) }}{% endfor %}</ul>
+        </details>
+      {% endif %}
+      {% if emails_logged %}
+        <div class="mt-3 border-t border-slate-100 pt-3">
+          <h3 class="eyebrow">Emails logged from PriorityOne</h3>
+          <ul class="mt-1.5 space-y-1 text-[13px]">
+            {% for e in emails_logged %}
+              <li class="flex flex-wrap gap-x-2"><span class="tabular-nums text-slate-400">{{ e.created_at | short_date }}</span>
+                <span class="font-medium">{{ e.contact.name if e.contact else 'Customer' }}</span>
+                <span class="min-w-0 flex-1 truncate text-slate-600">{{ e.subject }}{% if e.cc %} · cc {{ e.cc | join(', ') }}{% endif %}</span>
+                <span class="text-slate-400">Salesforce {{ e.salesforce_activity_id }}</span></li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    </section>
+
+    {# ---- Salesforce Tasks ---- #}
+    <section class="card card-pad scroll-mt-32" id="sf-tasks">
+      <div class="flex items-baseline justify-between">
+        <h2 class="section-title">Salesforce Tasks</h2>
+        <span class="text-xs text-slate-400">Status syncs from Salesforce (simulated)</span>
+      </div>
+      {% set open_tasks = account_tasks | rejectattr('status', 'equalto', 'completed') | list %}
+      {% set done_tasks = account_tasks | selectattr('status', 'equalto', 'completed') | list %}
+      {% macro task_row(t) %}
+        <li class="flex flex-wrap items-center gap-x-2 gap-y-1 py-2.5">
+          <span class="text-slate-400">{{ icon.task() }}</span>
+          <a href="https://adyen.my.salesforce.com/{{ t.salesforce_id }}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 font-medium hover:underline">{{ t.subject.split(': ', 1)[-1] }} {{ icon.external() }}</a>
+          <span class="pill {{ sf_status_pill[t.status] }}">{{ t.status_label }}</span>
+          <span class="text-xs {{ 'font-medium text-red-800' if is_overdue(t, today_d) else 'text-slate-500' }}">{{ 'Overdue · ' if is_overdue(t, today_d) }}due {{ t.due_date | short_date }} · {{ t.priority }}</span>
+          <span class="ml-auto text-xs text-slate-400">{{ t.owner.name.split()[0] }} · synced {{ t.last_synced_at | ago }}</span>
+        </li>
+      {% endmacro %}
+      {% if open_tasks %}
+        <ul class="mt-2 divide-y divide-slate-100 text-sm">{% for t in open_tasks %}{{ task_row(t) }}{% endfor %}</ul>
+      {% else %}
+        <p class="mt-2 text-sm text-slate-500">No open Salesforce Tasks on this account.</p>
+      {% endif %}
+      {% if done_tasks %}
+        <details class="mt-1 text-sm">
+          <summary class="inline-flex items-center gap-1 py-1 text-slate-500 hover:text-slate-900">{{ icon.check("h-3.5 w-3.5") }} {{ done_tasks | length }} completed</summary>
+          <ul class="divide-y divide-slate-100">{% for t in done_tasks %}{{ task_row(t) }}{% endfor %}</ul>
+        </details>
+      {% endif %}
+
+      {% if can_create and sf_prefill %}
+        <details class="mt-3 rounded-lg border border-slate-200 bg-slate-50/50" id="sf-create" {{ 'open' if not account_tasks }}>
+          <summary class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-700 hover:text-slate-900">{{ icon.plus("h-4 w-4") }} Create a Salesforce Task</summary>
+          <form method="post" action="/salesforce/tasks" class="space-y-2 border-t border-slate-100 p-3 text-sm">
+            <input type="hidden" name="account_id" value="{{ a.id }}"><input type="hidden" name="next" value="/account/{{ a.id }}">
+            <label class="block"><span class="label">For which reason?</span>
+              <select name="signal_id" id="sf-signal" class="input mt-1">
+                {% for c in result.contributions if c.signal_id in sf_prefill and not open_by_signal.get(c.signal_id) %}
+                  <option value="{{ c.signal_id }}">{{ c.sentence }}</option>{% endfor %}
+              </select></label>
+            <label class="block"><span class="label">Subject</span>
+              <input name="subject" id="sf-subject" required maxlength="255" class="input mt-1"></label>
+            <div class="flex gap-2">
+              <label class="flex-1"><span class="label">Due date</span>
+                <input type="date" name="due_date" id="sf-due" required min="{{ today_d.isoformat() }}" class="input mt-1"></label>
+              <label><span class="label">Priority</span>
+                <select name="priority" id="sf-priority" class="input mt-1"><option>High</option><option>Normal</option><option>Low</option></select></label>
+            </div>
+            <label class="block"><span class="label">Comments</span>
+              <textarea name="description" id="sf-description" rows="4" maxlength="4000" class="input mt-1 text-xs"></textarea></label>
+            <div class="flex flex-wrap items-center gap-3 pt-1"><button class="btn-sf">{{ icon.send("h-4 w-4") }} Create in Salesforce</button>
+            <span class="text-[11px] text-slate-400">Assigned to you, on the account. Counts as acting on it this week.</span></div>
+          </form>
+        </details>
+      {% endif %}
+    </section>
+
+    {# ---- Email a contact, or escalate internally ---- #}
+    <section class="card card-pad scroll-mt-32" id="messages">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="section-title">Email &amp; escalate</h2>
+        <div class="seg" role="tablist" aria-label="Message type">
+          <button type="button" role="tab" data-tab="email" aria-selected="true">Email a contact</button>
+          <button type="button" role="tab" data-tab="escalate" aria-selected="false">Escalate internally</button>
+        </div>
+      </div>
+
+      {# Email a customer contact #}
+      <div data-panel="email" class="mt-4">
+        {% if compose_json.contacts %}
+          <div class="space-y-3 text-sm">
+            <div class="grid gap-1 sm:grid-cols-[6rem_1fr] sm:items-start">
+              <label for="em-to" class="pt-2 text-slate-500">To</label>
+              <div>
+                <select id="em-to" class="input" autocomplete="off">{% for c in compose_json.contacts %}<option value="{{ c.id }}">{{ c.name }} · {{ c.title }}</option>{% endfor %}</select>
+                <p id="em-to-why" class="mt-1 text-xs text-slate-500"></p>
+              </div>
+            </div>
+            {% if compose_json.contacts | length > 1 %}
+              <fieldset class="grid gap-1 sm:grid-cols-[6rem_1fr]">
+                <legend class="sr-only">Copy in colleagues at {{ a.name }}</legend>
+                <span class="pt-1 text-slate-500" aria-hidden="true">Cc {{ a.name }}</span>
+                <div class="flex flex-wrap gap-1.5">
+                  {% for c in compose_json.contacts %}
+                    <label class="cc-chip" data-cc-customer-chip="{{ c.id }}"><input type="checkbox" autocomplete="off" class="sr-only" data-cc-customer value="{{ c.id }}">{{ c.name }} <span class="opacity-60">{{ c.role }}</span></label>
+                  {% endfor %}
+                </div>
+              </fieldset>
+            {% endif %}
+            <fieldset class="grid gap-1 sm:grid-cols-[6rem_1fr]">
+              <legend class="sr-only">Copy in people at Adyen</legend>
+              <span class="pt-1 text-slate-500" aria-hidden="true">Cc Adyen</span>
+              <div>
+                <div class="flex flex-wrap gap-1.5">
+                  {% for p in compose_json.internal %}
+                    <label class="cc-chip" title="{{ compose_json.suggested_cc.get(p.key, p.label) }}"><input type="checkbox" autocomplete="off" class="sr-only" data-cc-internal value="{{ p.key }}" {{ 'checked' if p.key in compose_json.suggested_cc }}>{{ p.name }}{% if p.short %} <span class="opacity-60">{{ p.short }}</span>{% endif %}</label>
+                  {% endfor %}
+                </div>
+                {% if compose_json.suggested_cc %}
+                  <p class="mt-1 text-xs text-slate-500">Suggested: {% for k, why in compose_json.suggested_cc.items() %}{{ (compose_json.internal | selectattr('key', 'equalto', k) | first).name }} ({{ why[0] | lower }}{{ why[1:] }}){{ '; ' if not loop.last }}{% endfor %}.</p>
+                {% endif %}
+              </div>
+            </fieldset>
+            <div class="grid gap-1 sm:grid-cols-[6rem_1fr] sm:items-center">
+              <label for="em-subject" class="text-slate-500">Subject</label>
+              <input id="em-subject" class="input" autocomplete="off">
+            </div>
+            <label for="em-body" class="sr-only">Message</label>
+            <textarea id="em-body" autocomplete="off" rows="14" class="input px-3 py-2.5 text-[14px] leading-relaxed"></textarea>
+          </div>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <button type="button" id="em-open" class="btn-primary">{{ icon.send() }} Open in email app</button>
+            <button type="button" id="em-copy" class="btn-secondary">Copy</button>
+            <button type="button" id="em-reset" class="btn-ghost btn-sm">Reset draft</button>
+            <button type="button" id="improve-btn" class="btn-ghost btn-sm {{ '' if llm_status[0] else 'opacity-50 cursor-not-allowed' }}"
+                    {{ '' if llm_status[0] else 'disabled' }} title="{{ llm_status[1] }}">{{ icon.spark("h-3.5 w-3.5") }} Improve with Claude</button>
+            <span id="em-status" class="text-[13px] text-slate-500" aria-live="polite"></span>
+          </div>
+          <p class="mt-2 text-xs text-slate-400">Opens a new message in your email app with everything filled in. You review it and press send: nothing is sent from PriorityOne.
+            {% if can_create %}Opening or copying logs the email on the contact in Salesforce and counts as handling the account this week.{% endif %}</p>
+        {% else %}
+          <p class="text-sm text-slate-500">No contacts in Salesforce for this account yet.</p>
+        {% endif %}
+      </div>
+
+      {# Escalate to your manager or another team #}
+      <div data-panel="escalate" class="mt-4 hidden">
+        {% if escalate_to %}
+          <div class="flex gap-2.5 rounded-lg bg-slate-50 px-3 py-2.5 text-sm">
+            <span class="mt-0.5 text-emerald-700">{{ icon.escalate() }}</span>
+            <p><span class="font-medium text-slate-900">Escalate to {{ escalate_to.name }}</span> <span class="text-slate-500">({{ escalate_to.role }}{{ ', ' ~ escalate_to.team_label if escalate_to.team != 'manager' }})</span>.
+              <span class="text-slate-600">{{ escalate_to.why[:1] | upper }}{{ escalate_to.why[1:] }}.</span>
+              {% if escalate_to.channel %}<span class="text-slate-400">Slack: {{ escalate_to.slack }}</span>{% endif %}</p>
+          </div>
+        {% endif %}
+        <p class="mt-2 text-[13px] text-slate-500">The draft summarises the problem, what the data shows and what you need. Pick another team below if you prefer. Copying it logs the escalation.</p>
+        <div class="mt-3 flex flex-wrap items-center gap-2 text-sm" role="group" aria-label="Recipient">
+          <span class="mr-1 text-slate-500">To</span>
+          {% for r in recipients if r != 'customer' %}
+            <button type="button" data-recipient="{{ r }}" class="recipient-btn rounded-full border px-3 py-1">{{ recipient_labels[r] }}</button>
+          {% endfor %}
+          <span id="channel-group" class="flex items-center gap-2">
+            <span class="mx-1 hidden text-slate-300 sm:inline">|</span><span class="text-slate-500">via</span>
+            <button type="button" data-channel="email" class="channel-btn rounded-full border px-3 py-1">Email</button>
+            <button type="button" data-channel="slack" class="channel-btn rounded-full border px-3 py-1">Slack</button>
+          </span>
+        </div>
+        <div class="mt-3 space-y-2 text-sm">
+          <div class="flex gap-2"><span class="w-16 text-slate-500">To</span><span id="draft-to" class="text-slate-800"></span></div>
+          <div class="flex items-center gap-2" id="subject-row"><label for="draft-subject" class="w-16 text-slate-500">Subject</label>
+            <input id="draft-subject" class="input flex-1"></div>
+          <textarea id="draft-body" rows="12" class="input px-3 py-2 font-mono text-[13px] leading-relaxed" aria-label="Escalation message"></textarea>
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-3 text-sm">
+          <button type="button" id="copy-btn" class="btn-primary">Copy to clipboard</button>
+          <button type="button" id="reset-btn" class="btn-ghost btn-sm">Reset draft</button>
+          <span id="copy-status" class="text-[13px] text-slate-500" aria-live="polite"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="space-y-6">
+    {# ---- Trends ---- #}
+    <section class="card card-pad scroll-mt-32" id="trends">
+      <h2 class="section-title">Last 26 weeks</h2>
+      {% if metrics %}
+        {% set first_m, last_m = metrics[0], metrics[-1] %}
+        <div class="mt-3">
+          <div class="flex items-baseline justify-between text-sm">
+            <span class="text-slate-600">Processing volume / week</span>
+            <span class="font-medium tabular-nums">{{ last_m.processing_volume_usd | money }}</span>
+          </div>
+          {{ sparkline(volume_series) }}
+          <div class="flex justify-between text-[11px] text-slate-400"><span>{{ first_m.week_start | short_date }}</span>
+            <span>range {{ volume_series | min | money }} – {{ volume_series | max | money }}</span><span>{{ last_m.week_start | short_date }}</span></div>
+        </div>
+        <div class="mt-4">
+          <div class="flex items-baseline justify-between text-sm">
+            <span class="text-slate-600">Authorisation rate</span>
+            <span class="font-medium tabular-nums">{{ '%.1f%%' % (last_m.auth_rate * 100) }}</span>
+          </div>
+          {{ sparkline(auth_series) }}
+          <div class="flex justify-between text-[11px] text-slate-400"><span>{{ first_m.week_start | short_date }}</span>
+            <span>range {{ '%.1f' % ((auth_series | min) * 100) }}% – {{ '%.1f' % ((auth_series | max) * 100) }}%</span><span>{{ last_m.week_start | short_date }}</span></div>
+        </div>
+        <p class="mt-3 text-xs text-slate-400">Last 3 weeks highlighted: red if down, green if up.</p>
+      {% else %}
+        <p class="mt-2 text-sm text-slate-500">No metrics yet.</p>
+      {% endif %}
+    </section>
+
+    {# ---- Relationship health ---- #}
+    <section class="card card-pad scroll-mt-32" id="relationship">
+      <h2 class="section-title">Relationship health</h2>
+      <dl class="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <div><dt class="text-xs text-slate-500">NPS</dt>
+          <dd class="font-medium {{ 'text-red-700' if a.nps_score is not none and a.nps_score <= 6 else '' }}">{% if a.nps_score is not none %}{{ a.nps_score }}/10 <span class="text-xs font-normal text-slate-500">{{ a.nps_date | short_date }}</span>{% else %}<span class="text-slate-400">no response</span>{% endif %}</dd></div>
+        <div><dt class="text-xs text-slate-500">Engaged contacts (90d)</dt>
+          <dd class="font-medium {{ 'text-amber-700' if a.contacts_engaged_90d == 1 and a.segment != 'SMB' }}">{{ a.contacts_engaged_90d if a.contacts_engaged_90d is not none else '–' }}{% if a.contacts_engaged_90d == 1 and a.segment != 'SMB' %} <span class="text-xs font-normal">single-threaded</span>{% endif %}</dd></div>
+        {% if a.segment == 'Enterprise' %}
+        <div class="col-span-2"><dt class="text-xs text-slate-500">Last exec-sponsor contact</dt>
+          <dd class="font-medium">{{ a.exec_sponsor_last_contact | nice_date }}</dd></div>
+        {% endif %}
+      </dl>
+      {% if sentiment | length >= 2 %}
+        <div class="mt-3 text-xs text-slate-500">Call sentiment (Gong), oldest → newest</div>
+        <div class="mt-1 flex items-end gap-1.5 h-12">
+          {% for d, v in sentiment %}
+            <div class="flex flex-col items-center gap-0.5" title="{{ d | short_date }}: {{ '%+.1f' % v }}">
+              <div class="w-5 rounded-sm {{ 'bg-emerald-600' if v >= 0.2 else ('bg-slate-400' if v > -0.1 else 'bg-red-700') }}" style="height: {{ (6 + 30 * (v + 1) / 2) | int }}px"></div>
+              <span class="text-[9px] text-slate-400">{{ d.strftime('%d/%m') }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </section>
+
+    {# ---- Gong call notes ---- #}
+    <section class="card card-pad scroll-mt-32" id="calls">
+      <h2 class="section-title">Call notes <span class="text-xs font-normal text-slate-400">from Gong</span></h2>
+      {% if freshness.gong.stale %}
+        <p class="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">⚠ Gong last synced {{ freshness.gong.newest | short_date }}. More recent calls may be missing.</p>
+      {% endif %}
+      {% for n in notes %}
+        <article class="mt-4 {{ 'border-t border-slate-100 pt-4' if not loop.first }}">
+          <div class="flex items-baseline justify-between gap-2 text-sm">
+            <span class="font-medium">{{ n.call_date | nice_date }}</span>
+            <a href="{{ n.source_ref }}" target="_blank" rel="noopener" class="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset {{ SOURCE_BADGE.gong }} hover:underline">Gong ↗</a>
+          </div>
+          <div class="text-xs text-slate-500 mt-0.5">{{ n.attendees }}</div>
+          <p class="mt-2 text-sm text-slate-700">{{ n.summary }}</p>
+          {% if llm_status[0] %}
+            <button type="button" data-extract="{{ n.id }}" class="mt-1 text-xs text-slate-500 underline hover:text-slate-900">Re-extract with Claude</button>
+            <span class="extract-status text-xs text-slate-500" data-for="{{ n.id }}"></span>
+          {% endif %}
+          {% if n.extraction_method == 'claude' %}<span class="text-[11px] text-blue-700">extracted by Claude</span>{% endif %}
+          {% if n.extracted_risks or n.extracted_opportunities %}
+            <div class="mt-2 flex flex-wrap gap-1">
+              {% for r in n.extracted_risks %}<span class="rounded-full bg-red-50 text-red-700 ring-1 ring-inset ring-red-200 px-2 py-0.5 text-xs">⚠ {{ r }}</span>{% endfor %}
+              {% for o in n.extracted_opportunities %}<span class="rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200 px-2 py-0.5 text-xs">↗ {{ o }}</span>{% endfor %}
+            </div>
+          {% endif %}
+        </article>
+      {% else %}
+        <p class="mt-2 text-sm text-slate-500">No recorded calls.</p>
+      {% endfor %}
+    </section>
+
+    {# ---- Feedback history ---- #}
+    {% if history %}
+      <section class="card card-pad">
+        <h2 class="section-title">Feedback history</h2>
+        <ul class="mt-2 space-y-2 text-sm">
+          {% for f in history %}
+            <li><span class="text-slate-500">{{ f.week_start | short_date }}</span> · {{ user_names[f.user_id] }}: {{ ACTION_LABELS[f.action] | lower }}{% if f.reason_code %} ({{ REASON_LABELS.get(f.reason_code, f.reason_code) | lower }}){% endif %}
+              {% if f.note %}<div class="text-slate-500 italic">"{{ f.note }}"</div>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const CAN_LOG = {{ 'true' if can_create else 'false' }};
+  const params = new URLSearchParams(location.search);
+
+  // ---- Tabs: email a contact / escalate internally ----
+  const tabs = document.querySelectorAll("[data-tab]");
+  function tab(name) {
+    tabs.forEach(t => t.setAttribute("aria-selected", t.dataset.tab === name));
+    document.querySelectorAll("[data-panel]").forEach(p => p.classList.toggle("hidden", p.dataset.panel !== name));
+  }
+  tabs.forEach(t => t.addEventListener("click", () => tab(t.dataset.tab)));
+
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) {  // fallback for browsers that block the async clipboard API
+      const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t);
+      t.select(); document.execCommand("copy"); t.remove();
+    }
+  }
+
+  // ---- Email composer ----
+  const C = {{ compose_json | tojson }};
+  const byId = Object.fromEntries(C.contacts.map(c => [String(c.id), c]));
+  let toId = null, edited = false;
+  const checked = sel => [...document.querySelectorAll(sel + ":checked")].map(i => i.value);
+
+  function build() {
+    const d = C.drafts[toId]; if (!d) return;
+    const intros = C.internal.filter(p => checked("[data-cc-internal]").includes(p.key)).map(p => p.intro);
+    const parts = [d.greeting, ...d.paras];
+    if (intros.length) parts.push(intros.join(" "));
+    parts.push(d.closing, d.signoff);
+    $("em-subject").value = d.subject;
+    $("em-body").value = parts.join("\n\n");
+    edited = false;
+  }
+  function setTo(id) {
+    if (!byId[id] || !$("em-to")) return;
+    toId = String(id);
+    $("em-to").value = toId;
+    $("em-to-why").textContent = byId[toId].why ? `${byId[toId].role} · ${byId[toId].why}` : byId[toId].role;
+    document.querySelectorAll("[data-cc-customer-chip]").forEach(chip => {
+      const self = chip.dataset.ccCustomerChip === toId;
+      chip.classList.toggle("hidden", self);
+      if (self) chip.querySelector("input").checked = false;
+    });
+    build();
+    $("em-status").textContent = "";
+  }
+  function recipients() {
+    const to = byId[toId];
+    const ccCustomer = checked("[data-cc-customer]").map(id => byId[id]);
+    const ccInternal = C.internal.filter(p => checked("[data-cc-internal]").includes(p.key));
+    return { to, cc: [...ccCustomer, ...ccInternal] };
+  }
+  async function logEmail(method) {
+    const { to, cc } = recipients();
+    if (!CAN_LOG) return method === "copy" ? "Copied. Paste it into a new email." : "Opened in your email app.";
+    const res = await fetch("/emails/log", { method: "POST", headers: { "Accept": "application/json" }, body: new URLSearchParams({
+      account_id: "{{ a.id }}", contact_id: to.id, cc: cc.map(p => p.name).join(";"), subject: $("em-subject").value, method }) });
+    if (!res.ok) return "Done, but logging to Salesforce failed.";
+    const data = await res.json();
+    return `${method === "copy" ? "Copied" : "Opened in your email app"}. Logged on ${to.first}'s contact in Salesforce (${data.salesforce_activity_id}).`;
+  }
+  if ($("em-to")) {
+    $("em-to").addEventListener("change", e => setTo(e.target.value));
+    document.querySelectorAll("[data-cc-internal]").forEach(i => i.addEventListener("change", () => {
+      if (!edited) build();
+      else $("em-status").textContent = "You've edited the draft, so the intro lines weren't changed. Reset draft to rebuild it.";
+    }));
+    $("em-body").addEventListener("input", () => { edited = true; });
+    $("em-reset").addEventListener("click", () => { build(); $("em-status").textContent = ""; });
+    $("em-open").addEventListener("click", async () => {
+      const { to, cc } = recipients();
+      const q = [cc.length ? "cc=" + cc.map(p => encodeURIComponent(p.email)).join(",") : null,
+                 "subject=" + encodeURIComponent($("em-subject").value), "body=" + encodeURIComponent($("em-body").value)];
+      window.location.href = `mailto:${encodeURIComponent(to.email)}?` + q.filter(Boolean).join("&");
+      const msg = await logEmail("mailto"); $("em-status").textContent = msg; toast(msg);
+    });
+    $("em-copy").addEventListener("click", async () => {
+      const { to, cc } = recipients();
+      const head = `To: ${to.name} <${to.email}>` + (cc.length ? `\nCc: ${cc.map(p => `${p.name} <${p.email}>`).join(", ")}` : "");
+      await copyText(`${head}\nSubject: ${$("em-subject").value}\n\n${$("em-body").value}`);
+      const msg = await logEmail("copy"); $("em-status").textContent = msg; toast(msg);
+    });
+    const asked = params.get("compose");
+    setTo(String(byId[asked] ? asked : (C.default_contact || C.contacts[0].id)));
+  }
+  document.querySelectorAll("[data-compose]").forEach(el => el.addEventListener("click", () => { tab("email"); setTo(el.dataset.compose); }));
+
+  // ---- Escalate internally: manager or another team, by email or Slack ----
+  const DRAFTS = {{ drafts.drafts | tojson }};
+  const INTERNAL = ["manager", "support", "risk", "finance", "product"];
+  const edits = {};  // per recipient+channel edits survive switching
+  const wanted = params.get("to");
+  const SUGGESTED = {{ (escalate_to.team if escalate_to else drafts.default) | tojson }};
+  let current = INTERNAL.includes(wanted) ? wanted : (INTERNAL.includes(SUGGESTED) ? SUGGESTED : "manager");
+  let channel = params.get("via") === "slack" ? "slack" : "email";
+  const draftFor = () => (channel === "slack" && DRAFTS[current].slack) ? DRAFTS[current].slack : DRAFTS[current];
+  const key = () => `${current}:${channel}`;
+  function saveEdits() { edits[key()] = { subject: $("draft-subject").value, body: $("draft-body").value }; }
+  function show(r) {
+    current = r;
+    const base = draftFor(), d = edits[key()] || base;
+    $("draft-to").textContent = base.to;
+    $("draft-subject").value = d.subject || "";
+    $("draft-body").value = d.body;
+    $("subject-row").classList.toggle("hidden", channel === "slack");
+    const on = "bg-slate-900 text-white border-slate-900", off = "bg-white text-slate-700 border-slate-300 hover:bg-slate-50";
+    document.querySelectorAll(".recipient-btn").forEach(b => {
+      b.setAttribute("aria-pressed", b.dataset.recipient === r);
+      b.className = `recipient-btn rounded-full border px-3 py-1 ${b.dataset.recipient === r ? on : off}`;
+    });
+    document.querySelectorAll(".channel-btn").forEach(b => {
+      b.setAttribute("aria-pressed", b.dataset.channel === channel);
+      b.className = `channel-btn rounded-full border px-3 py-1 ${b.dataset.channel === channel ? on : off}`;
+    });
+    $("copy-btn").textContent = CAN_LOG ? "Copy and log escalation" : "Copy to clipboard";
+    $("copy-status").textContent = "";
+  }
+  document.querySelectorAll(".recipient-btn").forEach(b => b.addEventListener("click", () => { saveEdits(); show(b.dataset.recipient); }));
+  document.querySelectorAll(".channel-btn").forEach(b => b.addEventListener("click", () => { saveEdits(); channel = b.dataset.channel; show(current); }));
+  $("reset-btn").addEventListener("click", () => { delete edits[key()]; show(current); });
+  $("copy-btn").addEventListener("click", async () => {
+    await copyText(channel === "slack" ? $("draft-body").value : `Subject: ${$("draft-subject").value}\n\n${$("draft-body").value}`);
+    if (CAN_LOG) {
+      const res = await fetch("/escalations", { method: "POST", headers: { "Accept": "application/json" },
+        body: new URLSearchParams({ account_id: "{{ a.id }}", target: current, channel }) });
+      $("copy-status").textContent = res.ok ? `Copied. Logged as an escalation to ${current} via ${channel === "slack" ? "Slack" : "email"}.` : "Copied, but logging failed.";
+    } else {
+      $("copy-status").textContent = channel === "slack" ? "Copied. Paste it into Slack." : "Copied. Paste it into your email client.";
+    }
+  });
+  show(current);
+  document.querySelectorAll("[data-to]").forEach(el => el.addEventListener("click", () => { tab("escalate"); saveEdits(); show(el.dataset.to); }));
+  tab(INTERNAL.includes(wanted) ? "escalate" : "email");
+
+  // ---- Salesforce Task form: pre-fill from the chosen reason ----
+  document.querySelectorAll("[data-open-task]").forEach(el => el.addEventListener("click", () => { const d = $("sf-create"); if (d) d.open = true; }));
+  const PREFILL = {{ sf_prefill_json | tojson }};
+  const sel = $("sf-signal");
+  function fillTask() {
+    const p = PREFILL[sel.value]; if (!p) return;
+    $("sf-subject").value = p.subject; $("sf-due").value = p.due_date; $("sf-priority").value = p.priority; $("sf-description").value = p.description;
+  }
+  if (sel) { sel.addEventListener("change", fillTask); fillTask(); }
+  document.querySelectorAll(".pick-signal").forEach(link => link.addEventListener("click", () => {
+    if (!sel) return;
+    sel.value = link.dataset.pickSignal; fillTask(); $("sf-create").open = true;
+  }));
+
+  // ---- Improve the customer email with Claude (when configured) ----
+  const improve = $("improve-btn");
+  if (improve && !improve.disabled) improve.addEventListener("click", async () => {
+    improve.disabled = true; const label = improve.innerHTML; improve.textContent = "Improving…";
+    const res = await fetch("/drafts/improve", { method: "POST", body: new URLSearchParams({ account_id: "{{ a.id }}", recipient: "customer", body: $("em-body").value }) });
+    const data = res.ok ? await res.json() : { used: false, reason: "Request failed." };
+    if (data.used) { $("em-body").value = data.body; edited = true; }
+    $("em-status").textContent = data.reason;
+    improve.disabled = false; improve.innerHTML = label;
+  });
+  document.querySelectorAll("[data-extract]").forEach(b => b.addEventListener("click", async () => {
+    const out = document.querySelector(`.extract-status[data-for="${b.dataset.extract}"]`);
+    out.textContent = " extracting…";
+    const res = await fetch(`/callnotes/${b.dataset.extract}/extract`, { method: "POST" });
+    const data = res.ok ? await res.json() : { used: false, reason: "Request failed." };
+    if (data.used) location.reload(); else out.textContent = " " + data.reason;
+  }));
+</script>
+{% endblock %}

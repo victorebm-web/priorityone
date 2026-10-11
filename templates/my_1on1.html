@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}1:1 document · {{ user.name }} · PriorityOne{% endblock %}
+{% block content %}
+{% set ws_pill = {"open": "bg-slate-100 text-slate-700 ring-slate-200", "working": "bg-blue-50 text-blue-700 ring-blue-200",
+                  "blocked": "bg-amber-50 text-amber-800 ring-amber-300", "completed": "bg-emerald-50 text-emerald-800 ring-emerald-200"} %}
+{% set ws_bar = {"open": "bg-slate-300", "working": "bg-blue-500", "blocked": "bg-amber-500", "completed": "bg-emerald-500"} %}
+{% set mgr_first = manager.name.split()[0] if manager else "my manager" %}
+
+{% macro status_summary(c) %}
+  <p class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-slate-500">
+    {% for k in status_order %}<span class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full {{ ws_bar[k] }}"></span>{{ c[k] }} {{ week_status_labels[k] | lower }}</span>{% endfor %}
+  </p>
+{% endmacro %}
+
+{% macro section(title, aside="") %}
+  <div class="mt-9 flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-200 pb-2">
+    <h2 class="text-[17px] font-semibold tracking-tight">{{ title }}</h2>
+    {% if aside %}<span class="text-[13px] text-slate-500">{{ aside }}</span>{% endif %}
+  </div>
+{% endmacro %}
+
+<div class="mx-auto max-w-4xl">
+  {# Toolbar: hidden when printing #}
+  <div class="flex flex-wrap items-center justify-between gap-3 print:hidden">
+    <a href="/" class="btn-ghost btn-sm -ml-2">{{ icon.back("h-3.5 w-3.5") }} Back to your week</a>
+    <div class="flex flex-wrap items-center gap-2">
+      <form method="get" class="text-sm">
+        <label for="week" class="sr-only">Week</label>
+        <select id="week" name="week" onchange="this.form.submit()" class="input w-auto py-1.5">
+          {% for w in weeks %}<option value="{{ w.isoformat() }}" {{ 'selected' if w == selected }}>{{ w | week_label }}{{ ' · current' if loop.first and is_current }}</option>{% endfor %}
+        </select>
+      </form>
+      <form method="post" action="/my-1on1/docx" id="docx-form">
+        <input type="hidden" name="week" value="{{ selected.isoformat() }}"><input type="hidden" name="notes" id="docx-notes">
+        <button class="btn-secondary btn-sm">{{ icon.download("h-3.5 w-3.5") }} Download .docx</button>
+      </form>
+      <button type="button" id="doc-copy" class="btn-secondary btn-sm">Copy as text</button>
+      <button type="button" onclick="window.print()" class="btn-secondary btn-sm">Print / PDF</button>
+      {% if manager %}<button type="button" id="doc-email" class="btn-primary btn-sm">{{ icon.send("h-3.5 w-3.5") }} Email to {{ mgr_first }}</button>{% endif %}
+    </div>
+  </div>
+
+  <article id="doc" class="card mt-4 px-6 py-7 sm:px-10 sm:py-9 print:mt-0 print:border-0 print:p-0 print:shadow-none">
+    <header>
+      <p class="eyebrow">1:1 preparation</p>
+      <h1 class="mt-1 text-[26px] font-semibold tracking-tight">{{ user.name }}{% if manager %} <span class="font-normal text-slate-400">with</span> {{ manager.name }}{% endif %}</h1>
+      <p class="mt-1 text-sm text-slate-500">{{ selected | week_label }} · prepared {{ today_d | nice_date }}</p>
+      <dl class="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 text-sm sm:grid-cols-4">
+        <div class="bg-white px-4 py-3"><dt class="text-[12px] text-slate-500">Need attention</dt><dd class="mt-0.5 text-lg font-semibold tabular-nums">{{ need_n }}<span class="text-sm font-normal text-slate-400"> of {{ book_size }}</span></dd></div>
+        <div class="bg-white px-4 py-3"><dt class="text-[12px] text-slate-500">Revenue at risk</dt><dd class="mt-0.5 text-lg font-semibold tabular-nums {{ 'text-red-800' if sm.revenue_at_risk }}">{{ sm.revenue_at_risk | money }}</dd></div>
+        <div class="bg-white px-4 py-3"><dt class="text-[12px] text-slate-500">Open Salesforce Tasks</dt><dd class="mt-0.5 text-lg font-semibold tabular-nums">{{ open_tasks | length }}{% if sm.overdue %}<span class="block text-[12px] font-medium text-red-800">{{ sm.overdue | length }} overdue</span>{% endif %}</dd></div>
+        <div class="bg-white px-4 py-3"><dt class="text-[12px] text-slate-500">Left from last week</dt><dd class="mt-0.5 text-lg font-semibold tabular-nums">{{ left_over | length }}</dd></div>
+      </dl>
+    </header>
+
+    {# 1. Where I need help #}
+    {{ section("Where I need help") }}
+    {% if asks %}
+      <ul class="mt-3 space-y-2 text-[15px] text-slate-800">{% for a in asks %}<li class="flex gap-2"><span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"></span><span>{{ a }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="mt-3 text-[15px] text-slate-500">Nothing waiting on anyone this week.</p>{% endif %}
+
+    {# 2. This week's accounts: one row each, in status order #}
+    {{ section("This week's accounts", selected | week_label) }}
+    {% if rows %}
+      {{ status_summary(counts) }}
+      <div class="mt-3 flex h-1.5 gap-0.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+        {% for k in status_order %}{% if counts[k] %}<div class="h-full {{ ws_bar[k] }}" style="flex: {{ counts[k] }} 1 0%"></div>{% endif %}{% endfor %}
+      </div>
+      <ol class="mt-2 divide-y divide-slate-100">
+        {% for pr in rows %}{% set a = pr.account %}{% set st = pr.ws.status %}
+          <li class="grid gap-x-6 gap-y-2 py-4 break-inside-avoid sm:grid-cols-[12rem_1fr]">
+            <div>
+              <a href="/account/{{ a.id }}" class="font-semibold hover:underline">{{ a.name }}</a>
+              <div class="text-[13px] text-slate-500">{{ a.segment }} · {{ a.arr_usd | money }} ARR</div>
+              <span class="pill mt-1.5 {{ ws_pill[st] }}">{{ week_status_labels[st] }}</span>
+            </div>
+            <div class="space-y-1.5 text-[14px]">
+              <p class="text-slate-900">{{ pr.top.sentence if pr.top else '–' }}</p>
+              {% if pr.done_items %}
+                <ul class="space-y-0.5 text-slate-600">{% for i in pr.done_items %}<li class="flex gap-2"><span class="text-emerald-600">✓</span><span>{{ i.text }}{% if i.overdue %} <span class="font-medium text-red-800">· overdue since {{ i.overdue | short_date }}</span>{% endif %}</span></li>{% endfor %}</ul>
+              {% else %}<p class="text-red-800">Nothing done yet</p>{% endif %}
+              {% if st == 'blocked' %}<p class="text-amber-800"><span class="font-medium">Blocked by:</span> {{ pr.ws.note or pr.ws.why }}</p>
+              {% elif pr.ws.note %}<p class="text-slate-600"><span class="font-medium text-slate-700">{{ 'How it was handled' if st == 'completed' else 'Note' }}:</span> {{ pr.ws.note }}</p>{% endif %}
+              {% if st != 'completed' %}<p class="text-slate-800"><span class="text-slate-400">Next →</span> {{ pr.next }}</p>{% endif %}
+            </div>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}<p class="mt-3 text-[15px] text-slate-500">Nothing on the list this week.</p>{% endif %}
+
+    {# 3. Last week: a short table #}
+    {{ section("How last week ended", prev | week_label) }}
+    {% if last_rows %}
+      {{ status_summary(last_counts) }}
+      <div class="mt-3 overflow-x-auto">
+        <table class="w-full text-left text-[14px]">
+          <thead class="text-[12px] text-slate-500"><tr class="border-b border-slate-200"><th class="py-2 pr-4 font-medium">Account</th><th class="py-2 pr-4 font-medium">Status</th><th class="py-2 font-medium">Outcome</th></tr></thead>
+          <tbody class="divide-y divide-slate-100">
+            {% for pr in last_rows %}
+              <tr class="align-top"><td class="py-2.5 pr-4 font-medium"><a href="/account/{{ pr.account.id }}" class="hover:underline">{{ pr.account.name }}</a></td>
+                <td class="py-2.5 pr-4"><span class="pill whitespace-nowrap {{ ws_pill[pr.ws.status] }}">{{ week_status_labels[pr.ws.status] }}</span></td>
+                <td class="py-2.5 text-slate-700">{{ pr.ws.note or pr.next }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}<p class="mt-3 text-[15px] text-slate-500">Nothing was on the list.</p>{% endif %}
+
+    {# 4. Wins, renewals, ranking feedback: only what has something to say #}
+    {{ section("Wins") }}
+    {% if wins %}
+      <ul class="mt-3 space-y-1 text-[15px] text-slate-800">{% for w in wins %}<li class="flex gap-2"><span class="text-emerald-600">✓</span><span>{{ w }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="mt-3 text-[15px] text-slate-500">None logged since last week.</p>{% endif %}
+
+    {% if renewals %}
+      {{ section("Renewals in the next 60 days") }}
+      <ul class="mt-3 space-y-1 text-[15px]">
+        {% for a in renewals %}<li class="flex flex-wrap gap-x-2"><span class="w-16 tabular-nums text-slate-500">{{ a.renewal_date | short_date }}</span><a href="/account/{{ a.id }}" class="font-medium hover:underline">{{ a.name }}</a><span class="text-slate-500">{{ a.segment }} · {{ a.arr_usd | money }} ARR · in {{ (a.renewal_date - selected).days }} days</span></li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if wrong_lines %}
+      {{ section("Where I think the ranking was wrong") }}
+      <ul class="mt-3 list-disc space-y-1 pl-5 text-[15px] text-slate-800 marker:text-slate-400">{% for l in wrong_lines %}<li>{{ l }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    {# My notes: kept in this browser #}
+    {{ section("My notes") }}
+    <label for="doc-notes" class="sr-only">My notes</label>
+    <textarea id="doc-notes" rows="4" class="input mt-3 text-[15px] leading-relaxed print:hidden" placeholder="Anything else to raise: development, pipeline, time off…"></textarea>
+    <div id="doc-notes-print" class="mt-3 hidden whitespace-pre-wrap text-[15px] print:block"></div>
+    <p class="mt-1 text-[12px] text-slate-400 print:hidden">Saved in this browser only. Included when you download, copy or email the document.</p>
+  </article>
+</div>
+
+{# Plain-text version for Copy and Email #}
+<template id="doc-text">1:1 PREPARATION: {{ user.name }}{% if manager %} with {{ manager.name }}{% endif %}
+{{ selected | week_label }} · prepared {{ today_d | nice_date }}
+
+Need attention: {{ need_n }} of {{ book_size }} · Revenue at risk: {{ sm.revenue_at_risk | money }} · Open Salesforce Tasks: {{ open_tasks | length }}{% if sm.overdue %} ({{ sm.overdue | length }} overdue){% endif %} · Left from last week: {{ left_over | length }}
+
+WHERE I NEED HELP
+{% for a in asks %}- {{ a }}
+{% else %}- Nothing waiting on anyone this week.
+{% endfor %}
+THIS WEEK'S ACCOUNTS: {% for k in status_order %}{{ counts[k] }} {{ week_status_labels[k] | lower }}{{ ', ' if not loop.last }}{% endfor %}
+{% for pr in rows %}
+{{ pr.account.name }} [{{ week_status_labels[pr.ws.status] }}]
+  Problem: {{ pr.top.sentence if pr.top else '-' }}
+  Done: {% if pr.done_items %}{% for i in pr.done_items %}{{ i.text }}{% if i.overdue %} (overdue since {{ i.overdue | short_date }}){% endif %}{{ '; ' if not loop.last }}{% endfor %}{% else %}nothing yet{% endif %}
+{% if pr.ws.status == 'blocked' %}  Blocked by: {{ pr.ws.note or pr.ws.why }}
+{% elif pr.ws.note %}  Note: {{ pr.ws.note }}
+{% endif %}{% if pr.ws.status != 'completed' %}  Next: {{ pr.next }}
+{% endif %}{% else %}- Nothing on the list.
+{% endfor %}
+HOW LAST WEEK ENDED ({{ prev | week_label }})
+{% for pr in last_rows %}- {{ pr.account.name }} [{{ week_status_labels[pr.ws.status] }}]: {{ pr.ws.note or pr.next }}
+{% else %}- Nothing was on the list.
+{% endfor %}
+WINS
+{% for w in wins %}- {{ w }}
+{% else %}- None logged since last week.
+{% endfor %}{% if renewals %}
+RENEWALS IN THE NEXT 60 DAYS
+{% for a in renewals %}- {{ a.renewal_date | short_date }}: {{ a.name }} ({{ a.segment }}, {{ a.arr_usd | money }} ARR, in {{ (a.renewal_date - selected).days }} days)
+{% endfor %}{% endif %}{% if wrong_lines %}
+WHERE I THINK THE RANKING WAS WRONG
+{% for l in wrong_lines %}- {{ l }}
+{% endfor %}{% endif %}</template>
+
+<script>
+  const notes = document.getElementById("doc-notes"), notesPrint = document.getElementById("doc-notes-print");
+  const KEY = "p1-1on1-notes-{{ user.id }}-{{ selected.isoformat() }}";
+  try { notes.value = localStorage.getItem(KEY) || ""; } catch (e) {}
+  const syncNotes = () => { notesPrint.textContent = notes.value; try { localStorage.setItem(KEY, notes.value); } catch (e) {} };
+  notes.addEventListener("input", syncNotes); syncNotes();
+  document.getElementById("docx-form").addEventListener("submit", () => { document.getElementById("docx-notes").value = notes.value; });
+
+  function asText() {
+    const text = document.getElementById("doc-text").innerHTML.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\n{3,}/g, "\n\n").trim();
+    return notes.value.trim() ? `${text}\n\nMY NOTES\n${notes.value.trim()}` : text;
+  }
+  document.getElementById("doc-copy").addEventListener("click", async () => {
+    const text = asText();
+    try { await navigator.clipboard.writeText(text); } catch (e) {
+      const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+    toast("Copied. Paste it into your 1:1 doc or an email.");
+  });
+  {% if manager %}
+  document.getElementById("doc-email").addEventListener("click", () => {
+    const subject = "1:1 prep: {{ user.name }}, {{ selected | week_label }}";
+    window.location.href = "mailto:{{ manager.name.lower().replace(' ', '.') }}@adyen.example?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(asText());
+  });
+  {% endif %}
+</script>
+{% endblock %}

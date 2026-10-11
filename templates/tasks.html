@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Salesforce Tasks · PriorityOne{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-4xl">
+  <a href="/" class="btn-ghost btn-sm -ml-2">{{ icon.back("h-3.5 w-3.5") }} Back to your week</a>
+  <h1 class="page-title mt-2">Your Salesforce Tasks</h1>
+  <p class="page-sub">Tasks you created from PriorityOne. Change a status here and it's written to Salesforce, which stays the record.</p>
+
+  <div class="mt-5 flex flex-wrap gap-1.5" role="tablist" aria-label="Filter Tasks">
+    {% for key, label in filters.items() %}
+      <a href="/tasks?show={{ key }}" role="tab" aria-selected="{{ 'true' if key == show else 'false' }}"
+         class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] {{ 'border-slate-900 bg-slate-900 text-white' if key == show else 'border-slate-300 bg-white text-slate-700 hover:border-slate-500' }}">
+        {{ label }} <span class="tabular-nums {{ 'text-white/70' if key == show else 'text-slate-400' }}">{{ counts[key] }}</span></a>
+    {% endfor %}
+  </div>
+
+  <section class="card mt-4">
+    {% if rows %}
+      <ul class="divide-y divide-slate-100">
+        {% for t in rows %}
+          {% set late = is_overdue(t, today_d) %}
+          <li class="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:px-5">
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <a href="/account/{{ t.account_id }}#sf-tasks" class="text-[13px] font-medium text-slate-500 hover:text-slate-900 hover:underline">{{ t.account.name }}</a>
+                {% if late %}<span class="pill bg-red-50 text-red-800 ring-red-200">Overdue</span>{% endif %}
+                <span class="chip bg-white text-slate-600 ring-slate-200">{{ t.priority }}</span>
+              </div>
+              <a href="https://adyen.my.salesforce.com/{{ t.salesforce_id }}" target="_blank" rel="noopener"
+                 class="mt-0.5 inline-flex items-center gap-1 font-medium text-slate-900 hover:underline">{{ t.subject.split(': ', 1)[-1] }} {{ icon.external() }}</a>
+              <div class="mt-0.5 text-[13px] text-slate-500">
+                {% if t.status == 'completed' and t.completed_at %}Completed {{ t.completed_at | short_date }}{% else %}<span class="{{ 'font-medium text-red-800' if late }}">Due {{ t.due_date | short_date }}</span>{% endif %}
+                · {{ t.salesforce_id }} · synced {{ t.last_synced_at | ago }}{% if t.reason_text %} · <span title="{{ t.reason_text }}">from: {{ t.reason_text | truncate(60) }}</span>{% endif %}
+              </div>
+            </div>
+            <form method="post" action="/salesforce/tasks/{{ t.id }}/status" class="flex shrink-0 items-center gap-2">
+              <input type="hidden" name="next" value="/tasks?show={{ show }}">
+              <label for="st-{{ t.id }}" class="sr-only">Status of {{ t.subject }}</label>
+              <span class="h-2 w-2 rounded-full {{ {'not_started': 'bg-slate-300', 'in_progress': 'bg-blue-500', 'waiting': 'bg-amber-500', 'completed': 'bg-emerald-500'}[t.status] }}" aria-hidden="true"></span>
+              <select id="st-{{ t.id }}" name="status" class="input w-auto py-1.5" onchange="this.form.submit()" autocomplete="off">
+                {% for st in statuses %}<option value="{{ st }}" {{ 'selected' if st == t.status }}>{{ status_labels[st] }}</option>{% endfor %}
+              </select>
+              <noscript><button class="btn-secondary btn-sm">Save</button></noscript>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="px-5 py-8 text-center text-sm text-slate-500">
+        {% if show == 'open' %}No open Tasks. Add one from a suggested next step on <a href="/" class="link">This Week</a>.{% else %}Nothing here.{% endif %}
+      </p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

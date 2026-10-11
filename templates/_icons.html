@@ -1,0 +1,21 @@
+{# Small inline SVG icon set (stroke icons, inherit currentColor). Usage: {{ icon.external() }} #}
+{% macro svg(path, cls="h-3.5 w-3.5") -%}
+<svg class="{{ cls }} shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ path | safe }}</svg>
+{%- endmacro %}
+{% macro external(cls="h-3 w-3") %}{{ svg('<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>', cls) }}{% endmacro %}
+{% macro alert(cls="h-4 w-4") %}{{ svg('<path d="M12 3 2 20h20L12 3z"/><path d="M12 10v4"/><path d="M12 17h.01"/>', cls) }}{% endmacro %}
+{% macro bolt(cls="h-4 w-4") %}{{ svg('<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/>', cls) }}{% endmacro %}
+{% macro hash(cls="h-4 w-4") %}{{ svg('<path d="M5 9h14M5 15h14M10 3 8 21M16 3l-2 18"/>', cls) }}{% endmacro %}
+{% macro escalate(cls="h-4 w-4") %}{{ svg('<path d="M12 19V5M5 12l7-7 7 7"/>', cls) }}{% endmacro %}
+{% macro check(cls="h-4 w-4") %}{{ svg('<path d="m5 12 5 5 9-10"/>', cls) }}{% endmacro %}
+{% macro arrow(cls="h-4 w-4") %}{{ svg('<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>', cls) }}{% endmacro %}
+{% macro back(cls="h-4 w-4") %}{{ svg('<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>', cls) }}{% endmacro %}
+{% macro plus(cls="h-4 w-4") %}{{ svg('<path d="M12 5v14"/><path d="M5 12h14"/>', cls) }}{% endmacro %}
+{% macro send(cls="h-4 w-4") %}{{ svg('<path d="m4 12 16-8-6 16-2-7-8-1z"/>', cls) }}{% endmacro %}
+{% macro dots(cls="h-4 w-4") %}{{ svg('<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>', cls) }}{% endmacro %}
+{% macro clock(cls="h-3.5 w-3.5") %}{{ svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', cls) }}{% endmacro %}
+{% macro download(cls="h-4 w-4") %}{{ svg('<path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/>', cls) }}{% endmacro %}
+{% macro task(cls="h-4 w-4") %}{{ svg('<rect x="4" y="4" width="16" height="16" rx="2"/><path d="m8 12 3 3 5-6"/>', cls) }}{% endmacro %}
+{% macro spark(cls="h-4 w-4") %}{{ svg('<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>', cls) }}{% endmacro %}
+{% macro info(cls="h-4 w-4") %}{{ svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>', cls) }}{% endmacro %}
+{% macro trend_down(cls="h-4 w-4") %}{{ svg('<path d="m3 7 6 6 4-4 8 8"/><path d="M21 11v6h-6"/>', cls) }}{% endmacro %}

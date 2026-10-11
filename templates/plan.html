@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Action plan · {{ a.name }} · PriorityOne{% endblock %}
+{% block content %}
+<a href="/account/{{ a.id }}" class="btn-ghost btn-sm -ml-2">← {{ a.name }}</a>
+<div class="mt-3 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="page-title">Mutual action plan</h1>
+    <p class="page-sub">{{ a.name }} renewal on {{ a.renewal_date | nice_date }}
+      ({{ days_to_renewal }} days). Milestones agreed with {{ a.primary_contact_name }}, so both sides know what happens when.</p>
+  </div>
+  {% if steps %}
+    <div class="w-full text-left sm:w-48 sm:text-right">
+      <div class="text-2xl font-semibold tabular-nums">{{ progress.done }}<span class="text-base text-slate-400">/{{ progress.total }}</span></div>
+      <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin="0" aria-valuemax="{{ progress.total }}" aria-valuenow="{{ progress.done }}" aria-label="Milestones done">
+        <div class="h-full rounded-full bg-emerald-500" style="width: {{ (100 * progress.done / progress.total) | round | int if progress.total else 0 }}%"></div></div>
+      <div class="mt-1 text-xs {{ 'font-medium text-red-700' if progress.overdue else 'text-slate-500' }}">{{ progress.overdue | length }} overdue</div>
+    </div>
+  {% endif %}
+</div>
+
+{% if not steps %}
+  <div class="mt-6 rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center">
+    <p class="text-slate-600">No plan yet. Start from the renewal template: seven milestones counted back from the renewal date.</p>
+    {% if can_edit %}
+      <form method="post" action="/account/{{ a.id }}/plan" class="mt-4"><button class="btn-primary">Create renewal plan</button></form>
+    {% else %}<p class="mt-2 text-sm text-slate-500">Only {{ a.owner.name }} can create it.</p>{% endif %}
+  </div>
+{% else %}
+  <section class="mt-6 card">
+    <ol class="divide-y divide-slate-100">
+      {% for st in steps %}
+        {% set late = not st.done and st.due_date < today %}
+        <li class="flex items-start gap-3 px-4 py-3 text-sm">
+          <div class="pt-0.5">{% if can_edit %}
+            <form method="post" action="/plan/{{ st.id }}/toggle">
+              <button class="flex h-5 w-5 items-center justify-center rounded border {{ 'border-emerald-600 bg-emerald-600 text-white' if st.done else 'border-slate-300 bg-white hover:border-slate-500' }}"
+                      aria-label="{{ 'Mark not done' if st.done else 'Mark done' }}: {{ st.title }}">{% if st.done %}{{ icon.check('h-3.5 w-3.5') }}{% endif %}</button>
+            </form>
+          {% else %}<span class="flex h-5 w-5 items-center justify-center rounded border {{ 'border-emerald-600 bg-emerald-600 text-white' if st.done else 'border-slate-300' }}">{% if st.done %}{{ icon.check('h-3.5 w-3.5') }}{% endif %}</span>{% endif %}</div>
+          <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+            <span class="block sm:flex-1 {{ 'line-through text-slate-400' if st.done else 'text-slate-900' }}">{{ st.title }}</span>
+            <div class="mt-1 flex flex-wrap items-center gap-2 sm:mt-0">
+              <span class="tabular-nums text-xs {{ 'text-red-700 font-medium' if late else 'text-slate-500' }}">{{ st.due_date | short_date }}</span>
+              <span class="pill {{ 'bg-slate-900 text-white ring-slate-900' if st.owner_side == 'adyen' else 'bg-blue-50 text-blue-700 ring-blue-200' }}">{{ 'Adyen' if st.owner_side == 'adyen' else a.name }}</span>
+              <span class="text-xs text-slate-500">{{ st.owner_name }}</span>
+              {% if late %}<span class="pill bg-red-50 text-red-800 ring-red-200">overdue</span>{% endif %}
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  {% if can_edit %}
+    <form method="post" action="/account/{{ a.id }}/plan/step" class="mt-4 flex flex-wrap items-end gap-2 card p-3 text-sm">
+      <label class="flex-1 min-w-[12rem]"><span class="label">Add a milestone</span>
+        <input name="title" required maxlength="200" class="input mt-1" placeholder="e.g. Security review with their CISO"></label>
+      <label><span class="label">Owner</span>
+        <select name="owner_side" class="input mt-1 w-auto"><option value="adyen">Adyen</option><option value="customer">{{ a.name }}</option></select></label>
+      <label><span class="label">Due</span>
+        <input type="date" name="due_date" required value="{{ today.isoformat() }}" class="input mt-1 w-auto"></label>
+      <button class="btn-secondary">Add</button>
+    </form>
+  {% endif %}
+
+  <section class="mt-6 card card-pad">
+    <div class="flex items-center justify-between">
+      <h2 class="section-title">Share with the customer</h2>
+      <button type="button" id="copy-plan" class="btn-secondary btn-sm">Copy as text</button>
+    </div>
+    <pre id="plan-text" class="mt-3 whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-xs">{{ text }}</pre>
+    <span id="plan-status" class="text-sm text-emerald-700" aria-live="polite"></span>
+  </section>
+  <script>
+    document.getElementById("copy-plan").addEventListener("click", async () => {
+      const text = document.getElementById("plan-text").textContent;
+      try { await navigator.clipboard.writeText(text); } catch (e) {
+        const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+      toast("Copied. Paste it into your email to the customer.");
+    });
+  </script>
+{% endif %}
+{% endblock %}

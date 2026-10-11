@@ -1,0 +1,18 @@
+{# The note dialog for Completed / Blocked. Expects a, ws (week status), row.open_tasks, here. #}
+<dialog id="dlg-status-{{ a.id }}" class="dialog" aria-labelledby="t-status-{{ a.id }}">
+  <form method="post" action="/account-status" class="space-y-4 p-5">
+    <input type="hidden" name="account_id" value="{{ a.id }}"><input type="hidden" name="next" value="{{ here }}">
+    <input type="hidden" name="status" value="completed" data-dlg-status>
+    <h3 id="t-status-{{ a.id }}" class="section-title"><span data-dlg-title>Completed</span>: {{ a.name }}</h3>
+    <label class="block"><span class="label" data-dlg-label>How was it handled?</span>
+      <textarea name="note" rows="5" maxlength="1000" class="input mt-1 text-[13px] leading-relaxed" data-dlg-note
+                placeholder="e.g. Hugo confirmed the routing test ended; volume is back from next week.">{{ ws.note or '' }}</textarea></label>
+    {% if row.open_tasks %}
+      <label class="flex items-start gap-2 text-[13px] text-slate-700" data-dlg-complete>
+        <input type="checkbox" name="complete_tasks" value="1" checked class="mt-0.5">
+        <span>Also complete its {{ row.open_tasks | length }} open Salesforce Task{{ 's' if row.open_tasks | length != 1 }}, with this note as the outcome</span></label>
+    {% endif %}
+    <p class="text-[12px] text-slate-400" data-dlg-help>The note shows in your 1:1 document. Nothing is typed twice: it goes to Salesforce as the Task outcome.</p>
+    <div class="flex justify-end gap-2"><button type="button" class="btn-secondary" data-close>Cancel</button><button class="btn-primary">Save</button></div>
+  </form>
+</dialog>

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}New Salesforce Task · {{ a.name }} · PriorityOne{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-2xl">
+  <a href="{{ back }}" class="btn-ghost btn-sm -ml-2">{{ icon.back("h-3.5 w-3.5") }} Cancel</a>
+  <div class="mt-2 flex items-center gap-3">
+    <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0176D3] text-white">{{ icon.task("h-5 w-5") }}</span>
+    <div>
+      <h1 class="page-title">New Salesforce Task</h1>
+      <p class="text-sm text-slate-500">Check the details, change anything you like, then create it.</p>
+    </div>
+  </div>
+
+  {% if existing %}
+    <div class="mt-5 flex gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      {{ icon.info() }}
+      <p>There's already an open Task for this reason: <a href="https://adyen.my.salesforce.com/{{ existing.salesforce_id }}" target="_blank" rel="noopener" class="font-medium underline">{{ existing.subject }}</a> ({{ existing.status_label }}, due {{ existing.due_date | short_date }}). Creating again won't make a duplicate; it opens that one.</p>
+    </div>
+  {% endif %}
+
+  <form method="post" action="/salesforce/tasks" class="card mt-5 p-5 sm:p-6">
+    <input type="hidden" name="account_id" value="{{ a.id }}">
+    <input type="hidden" name="category" value="{{ category or '' }}"><input type="hidden" name="next" value="{{ back }}">
+
+    {# What the Task is attached to: read-only context #}
+    <dl class="grid gap-x-6 gap-y-3 border-b border-slate-100 pb-5 text-sm sm:grid-cols-2">
+      <div><dt class="label">Account</dt><dd class="mt-0.5 font-medium">{{ a.name }} <span class="font-normal text-slate-500">· {{ a.segment }} · {{ a.arr_usd | money }} ARR</span></dd></div>
+      <div><dt class="label">Assigned to</dt><dd class="mt-0.5 font-medium">{{ user.name }} <span class="font-normal text-slate-500">(you)</span></dd></div>
+      <div class="sm:col-span-2">
+        <dt class="label">Reason</dt>
+        <dd class="mt-1">
+          {% if reasons | length > 1 %}
+            <label for="signal" class="sr-only">Reason</label>
+            <select id="signal" name="signal_id" class="input">
+              {% for r in reasons %}<option value="{{ r.signal_id }}" {{ 'selected' if signal and r.signal_id == signal.id }}>{{ r.sentence }}</option>{% endfor %}
+            </select>
+          {% elif signal %}
+            <input type="hidden" name="signal_id" value="{{ signal.id }}">
+            <span class="text-slate-800">{{ signal.summary }}</span>
+          {% else %}<span class="text-slate-500">No specific reason</span>{% endif %}
+          {% if signal %}<a href="{{ signal.source_ref }}" target="_blank" rel="noopener" class="mt-1 inline-flex items-center gap-1 text-[12px] text-slate-500 hover:text-slate-900">Source: {{ SOURCE_LABELS.get(signal.source_system, signal.source_system) }} {{ icon.external("h-3 w-3") }}</a>{% endif %}
+        </dd>
+      </div>
+    </dl>
+
+    {# The Task itself: editable #}
+    <div class="mt-5 space-y-4">
+      <label class="block"><span class="label">Subject</span>
+        <input name="subject" required maxlength="255" value="{{ pre.subject }}" class="input mt-1" autocomplete="off"></label>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="block"><span class="label">Next step date</span>
+          <input type="date" name="due_date" required value="{{ pre.due_date.isoformat() }}" min="{{ today_d.isoformat() }}" class="input mt-1" autocomplete="off">
+          <span class="mt-1 block text-[12px] text-slate-400">The Task's due date in Salesforce. Suggested: {{ {'act_now': '2 working days for urgent accounts', 'opportunity': '5 working days for opportunities', 'maintain': '10 working days for housekeeping'}.get(category, '5 working days') }}.</span></label>
+        <label class="block"><span class="label">Priority</span>
+          <select name="priority" class="input mt-1" autocomplete="off">
+            {% for pr in ["High", "Normal", "Low"] %}<option {{ 'selected' if pr == pre.priority }}>{{ pr }}</option>{% endfor %}
+          </select></label>
+      </div>
+      <label class="block"><span class="label">Comments</span>
+        <textarea name="description" rows="6" maxlength="4000" class="input mt-1 text-[13px] leading-relaxed" autocomplete="off">{{ pre.description }}</textarea></label>
+    </div>
+
+    <div class="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-5">
+      <button class="btn-sf">{{ icon.plus() }} Create in Salesforce</button>
+      <a href="{{ back }}" class="btn-ghost">Cancel</a>
+      <span class="text-[12px] text-slate-400 sm:ml-auto">Counts as handling the account this week. Status syncs back from Salesforce.</span>
+    </div>
+  </form>
+</div>
+{% endblock %}

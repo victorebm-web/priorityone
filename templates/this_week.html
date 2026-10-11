@@ -1,0 +1,468 @@
+{% extends "base.html" %}
+{% block title %}This Week · PriorityOne{% endblock %}
+{% block content %}
+{% set first_name = user.name.split()[0] %}
+{% set all_rows = (groups | map(attribute=1) | sum(start=[])) + carried %}
+{% set act_rows = groups[0][1] %}
+{% set here = "/?week=" ~ selected.isoformat() ~ ("&view=board" if view == "board" else "") %}
+{% set accent = {"act_now": "border-l-red-700", "opportunity": "border-l-amber-300", "maintain": "border-l-amber-300"} %}
+{% set group_help = {"act_now": "Money or the relationship is on the line. Handle these first.",
+                     "opportunity": "Room to grow. Open one when you have time for a conversation.",
+                     "maintain": "Steady accounts with something small to keep an eye on."} %}
+
+<div class="mx-auto max-w-4xl">
+{# ---------- Header ---------- #}
+<div class="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+  <div>
+    <h1 class="page-title">{% if is_current %}Hi {{ first_name }}, here's your week{% else %}{{ first_name }}'s list{% endif %}</h1>
+    <p class="page-sub">
+      {% set done_n = all_rows | selectattr('feedback') | list | length %}{% if all_rows %}{{ all_rows | length }} account{{ 's' if all_rows | length != 1 }}, most important first{% if done_n %}. {{ done_n }} already handled{% endif %}.{% else %}Nothing needs you this week.{% endif %}
+    </p>
+  </div>
+  <form method="get" action="/" class="flex items-center gap-2 text-sm">
+    <label for="week" class="sr-only">Week</label>
+    <select id="week" name="week" onchange="this.form.submit()" class="input w-auto py-1.5 pr-8">
+      {% for w in weeks %}<option value="{{ w.isoformat() }}" {{ 'selected' if w == selected }}>{{ w | week_label }}{{ ' · current' if loop.first and is_current }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if not is_current %}
+  <div class="mt-4 flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2.5 text-sm text-slate-700">{{ icon.info() }} You're looking at a past week. It's read-only. <a href="/" class="link">Back to this week</a></div>
+{% endif %}
+
+{# ---------- Summary strip: what needs you, and the ways in ---------- #}
+{% if all_rows or stats.left_over %}
+  {% set need_n = book | selectattr("status", "in", ["attention", "flagged"]) | list | length %}
+  <div class="card mt-5 flex flex-col lg:flex-row lg:items-stretch">
+    <div class="grid flex-1 grid-cols-2 divide-x divide-slate-100">
+      <a href="#accounts" class="group flex flex-col gap-0.5 px-4 py-3 hover:bg-slate-50/70 sm:px-5 lg:rounded-l-xl">
+        <div class="truncate text-[12px] text-slate-500">Need attention</div>
+        <div class="text-lg font-semibold tabular-nums {{ 'text-red-800' if need_n }}">{{ need_n }}<span class="text-[13px] font-normal text-slate-400"> of {{ book | length }}</span></div>
+        <div class="text-[12px] text-slate-400 group-hover:text-slate-700">See the list ↓</div>
+      </a>
+      <a href="#left-last-week" class="group flex flex-col gap-0.5 px-4 py-3 hover:bg-slate-50/70 sm:px-5 {{ 'pointer-events-none' if not stats.left_over }}">
+        <div class="truncate text-[12px] text-slate-500">Outstanding</div>
+        <div class="text-lg font-semibold tabular-nums {{ 'text-violet-700' if stats.left_over }}">{{ (stats.left_over | length) if stats.has_prev else '–' }}</div>
+        <div class="text-[12px] text-slate-400 group-hover:text-slate-700">{{ 'From previous weeks ↓' if stats.left_over else 'Nothing left over' }}</div>
+      </a>
+    </div>
+    <div class="flex flex-col gap-2 border-t border-slate-100 p-3 sm:flex-row lg:w-72 lg:flex-col lg:justify-center lg:border-l lg:border-t-0 lg:px-4">
+      {% if is_current and act_rows %}
+        <a href="#accounts" class="btn-primary w-full">Go to this week's accounts ↓</a>
+      {% endif %}
+      <a href="/my-1on1?week={{ selected.isoformat() }}" class="btn-secondary w-full">{{ icon.task("h-4 w-4") }} Prepare my 1:1 document</a>
+    </div>
+  </div>
+{% endif %}
+
+{# ---------- Your book: every account, by what it needs ---------- #}
+{# Three groups, three colours: red needs you, yellow is worth a look, green is on track #}
+{% set group_of = {"attention": "red", "flagged": "red", "opportunity": "yellow", "housekeeping": "yellow",
+                   "handled": "green", "set_aside": "green", "healthy": "green"} %}
+{% set groups_style = [("red", "bg-red-700", "Needs attention"), ("yellow", "bg-amber-300", "Worth a look"), ("green", "bg-emerald-500", "On track")] %}
+{% set status_note = {"flagged": "Over your list size", "handled": "Handled this week", "set_aside": "Set aside"} %}
+{% set colour = {"red": "bg-red-700", "yellow": "bg-amber-300", "green": "bg-emerald-500"} %}
+{% if book %}
+  {% set gcount = {"red": book | selectattr("status", "in", ["attention", "flagged"]) | list | length,
+                   "yellow": book | selectattr("status", "in", ["opportunity", "housekeeping"]) | list | length,
+                   "green": book | selectattr("status", "in", ["handled", "set_aside", "healthy"]) | list | length} %}
+  <section class="card mt-4 p-4 sm:p-5" aria-labelledby="h-book">
+    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <h2 id="h-book" class="section-title">Your book <span class="font-normal text-slate-400">· {{ book | length }} accounts</span>
+        <a href="/scorecard" class="ml-1 align-middle text-[12px] font-normal text-slate-400 underline decoration-slate-300 underline-offset-2 hover:text-slate-900">How we rank</a></h2>
+      <p class="text-[13px] text-slate-500">
+        {% if gcount.red %}<b class="font-semibold text-slate-900">{{ gcount.red }}</b> need{{ 's' if gcount.red == 1 }} attention{% else %}Nothing urgent{% endif %} · {{ gcount.green }} on track
+      </p>
+    </div>
+
+    {# Three segments, sized by how many accounts are in each group #}
+    <div class="mt-3 flex h-3 gap-0.5 overflow-hidden rounded-full" role="img"
+         aria-label="{% for g, _, label in groups_style if gcount[g] %}{{ gcount[g] }} {{ label | lower }}{{ ', ' if not loop.last }}{% endfor %}">
+      {% for g, cls, label in groups_style if gcount[g] %}
+        <div class="h-full {{ cls }}" style="flex: {{ gcount[g] }} 1 0%" title="{{ label }}: {{ gcount[g] }}"></div>
+      {% endfor %}
+    </div>
+    <ul class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-600">
+      {% for g, cls, label in groups_style if gcount[g] %}
+        <li class="inline-flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm {{ cls }}"></span>{{ label }} <b class="font-semibold tabular-nums text-slate-900">{{ gcount[g] }}</b></li>
+      {% endfor %}
+    </ul>
+
+    {# Every account, one line each, most at stake first #}
+    <details class="group mt-3 border-t border-slate-100 pt-2" id="book-list" {{ 'open' if book | length <= 12 }}>
+      <summary class="inline-flex items-center gap-1 py-1 text-[13px] text-slate-500 hover:text-slate-900">
+        <span class="group-open:hidden">Show all {{ book | length }} accounts</span><span class="hidden group-open:inline">All accounts</span>
+        <span class="transition-transform group-open:rotate-90">{{ icon.arrow("h-3.5 w-3.5") }}</span>
+      </summary>
+      <p class="mt-1 text-[12px] text-slate-400">Ordered by what's at stake: revenue run rate × how serious the issue is. <span title="Last completed week's processing volume × 52 × take rate">Run rate = last week's revenue × 52.</span> Last touch = latest completed Salesforce Task, email, call or QBR.</p>
+      <ul class="mt-2 divide-y divide-slate-100">
+        {% for r in book %}
+          {% set a = r.account %}
+          {% set href = '#acct-' ~ a.id if r.on_list else '/account/' ~ a.id ~ '?week=' ~ selected.isoformat() %}
+          {% set quiet = r.status in ('handled', 'set_aside', 'healthy') and not r.pinned %}
+          <li class="group/li -mx-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md px-2 py-2.5 hover:bg-slate-50/80 sm:flex-nowrap">
+            <span class="h-2.5 w-2.5 shrink-0 rounded-full {{ colour[group_of[r.status]] }}" aria-label="{{ (groups_style | selectattr(0, 'equalto', group_of[r.status]) | first)[2] }}"></span>
+            <a href="{{ href }}" class="group/row min-w-0 flex-1 basis-[calc(100%-1.5rem)] sm:basis-auto">
+              <span class="flex flex-wrap items-baseline gap-x-2">
+                <span class="text-sm font-medium group-hover/row:underline {{ 'text-slate-500' if quiet else 'text-slate-900' }}">{{ a.name }}</span>
+                <span class="text-[12px] text-slate-400">{{ a.segment }} · <span title="Annualised: last week's revenue × 52">{{ r.run_rate | money }} run rate</span></span>
+              </span>
+              <span class="block truncate text-[12px] {{ 'text-slate-400' if quiet else 'text-slate-600' }}">{{ status_note[r.status] ~ (': ' ~ r.why if r.status == 'flagged' else '') if r.status in status_note else r.why }}</span>
+            </a>
+            {% set t = r.touch %}{% set days = (today - t[0]).days if t else None %}
+            <span class="ml-5 shrink-0 text-[12px] leading-tight sm:ml-0 sm:w-28 sm:text-right {{ 'text-amber-800' if days is not none and days > 90 else 'text-slate-500' }}" title="Last touch{{ ': ' ~ t[1] ~ ' on ' ~ (t[0] | short_date) if t else '' }}">
+              {% if t %}<span class="sm:hidden">Last touch </span>{{ 'today' if days == 0 else (days ~ (' day' if days == 1 else ' days') ~ ' ago') }}<br class="hidden sm:inline"><span class="text-slate-400"><span class="sm:hidden"> · </span>{{ t[1] }}</span>{% else %}no touch logged{% endif %}
+            </span>
+            <span class="ml-auto flex shrink-0 justify-end sm:ml-0 sm:w-36">
+              {% if r.pinned %}
+                <form method="post" action="/pins/remove"><input type="hidden" name="account_id" value="{{ a.id }}"><input type="hidden" name="next" value="{{ here }}">
+                  <button class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-blue-700 hover:bg-slate-100" title="Added by you. Click to take it off this week's list.">{{ icon.check("h-3.5 w-3.5") }} Added · remove</button></form>
+              {% elif r.on_list %}
+                <a href="{{ href }}" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] text-slate-500 hover:bg-slate-100">{{ icon.check("h-3.5 w-3.5") }} On your list</a>
+              {% elif is_current %}
+                <form method="post" action="/pins"><input type="hidden" name="account_id" value="{{ a.id }}"><input type="hidden" name="next" value="{{ here }}">
+                  <button class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[12px] font-medium text-slate-600 transition hover:border-slate-900 hover:text-slate-900 sm:border-transparent sm:bg-transparent sm:text-slate-400 sm:group-hover/li:border-slate-300 sm:group-hover/li:bg-white sm:group-hover/li:text-slate-700 focus-visible:border-slate-300 focus-visible:text-slate-700" title="Put {{ a.name }} on this week's list">{{ icon.plus("h-3.5 w-3.5") }} Add to my week</button></form>
+              {% endif %}
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+    </details>
+  </section>
+{% endif %}
+
+{# ---------- Alerts ---------- #}
+{% if alerts %}
+  <section class="mt-5 rounded-xl border border-red-200 bg-red-50/60 p-4" aria-label="New since Monday">
+    <h2 class="flex items-center gap-2 text-sm font-semibold text-red-900">{{ icon.bolt("h-4 w-4") }} New since Monday <span class="font-normal text-red-800">· don't wait for next week</span></h2>
+    <ul class="mt-2.5 space-y-2">
+      {% for e in alerts %}
+        {% set a = accounts[e.account_id] %}
+        <li class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-white px-3 py-2.5 text-sm ring-1 ring-red-100">
+          <div class="min-w-0 flex-1">
+            <a href="/account/{{ a.id }}" class="font-semibold hover:underline">{{ a.name }}</a>
+            <span class="text-slate-700"> · {{ e.summary }}</span>
+          </div>
+          {% set tk = sf_open.get((a.id, e.id)) %}
+          {% if tk %}<a href="https://adyen.my.salesforce.com/{{ tk.salesforce_id }}" target="_blank" rel="noopener" class="chip {{ SF_STATUS_PILL[tk.status] }}">SF Task · {{ tk.status_label }} {{ icon.external() }}</a>
+          {% else %}
+            <a href="/salesforce/tasks/new?account_id={{ a.id }}&signal_id={{ e.id }}&next={{ here | urlencode }}" class="btn-sf btn-sm" title="Review the pre-filled Task, then create it">{{ icon.task("h-3.5 w-3.5") }} Create Task</a>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+{# ---------- The list ---------- #}
+{% if not all_rows %}
+  <div class="card mt-8 p-10 text-center">
+    <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50 text-emerald-700">{{ icon.check("h-5 w-5") }}</div>
+    <h2 class="section-title mt-3">You're all clear</h2>
+    <p class="mt-1 text-sm text-slate-500">No account in your book has an active problem or opportunity this week.</p>
+  </div>
+{% endif %}
+
+{# ---------- List / Board switch ---------- #}
+{% if all_rows or added %}
+  <div id="accounts" class="mt-8 flex scroll-mt-24 flex-wrap items-center justify-between gap-3">
+    <h2 class="section-title">This week's accounts <span class="font-normal text-slate-400">{{ (all_rows | length) + (added | length) }}</span></h2>
+    <div class="seg" role="tablist" aria-label="View">
+      <a href="/?week={{ selected.isoformat() }}&view=list#accounts" role="tab" aria-selected="{{ 'true' if view == 'list' else 'false' }}" data-view="list" class="inline-flex items-center gap-1.5">{{ icon.task("h-3.5 w-3.5") }} List</a>
+      <a href="/?week={{ selected.isoformat() }}&view=board#accounts" role="tab" aria-selected="{{ 'true' if view == 'board' else 'false' }}" data-view="board" class="inline-flex items-center gap-1.5">{{ icon.dots("h-3.5 w-3.5") }} Board</a>
+    </div>
+  </div>
+{% endif %}
+
+{% if view == 'board' %}
+  {# ---------- Board: one column per status; drag a card to change it ---------- #}
+  {% set items = all_rows + added %}
+  {% set col_style = {"open": ("bg-slate-300", "Nothing done yet"), "working": ("bg-blue-500", "In progress"),
+                      "blocked": ("bg-amber-500", "Waiting on someone"), "completed": ("bg-emerald-500", "Done this week")} %}
+  <p class="mt-1 text-[13px] text-slate-500">{% if is_current %}Drag a card to change its status, or use the menu on the card. Completed and Blocked ask for a short note.{% else %}A past week: read-only.{% endif %}</p>
+  {# The board breaks out of the reading column to use the page width #}
+  <div class="relative left-1/2 mt-3 w-[min(76rem,calc(100vw_-_2rem))] -translate-x-1/2 overflow-x-auto pb-3">
+    <div class="grid min-w-[880px] grid-cols-4 gap-3">
+      {% for key in week_status_keys %}
+        {% set col = items | selectattr("week_status.status", "equalto", key) | list %}
+        <section class="flex flex-col rounded-xl bg-slate-100/80 p-2" aria-labelledby="col-{{ key }}">
+          <div class="flex items-center gap-2 px-1.5 py-1">
+            <span class="h-2.5 w-2.5 rounded-full {{ col_style[key][0] }}"></span>
+            <h3 id="col-{{ key }}" class="text-sm font-semibold">{{ week_status_labels[key] }}</h3>
+            <span class="text-sm tabular-nums text-slate-400">{{ col | length }}</span>
+            <span class="ml-auto hidden text-[11px] text-slate-400 xl:inline">{{ col_style[key][1] }}</span>
+          </div>
+          <ul class="mt-1 flex min-h-[140px] flex-1 flex-col gap-2 rounded-lg p-0.5 transition" data-drop="{{ key }}" aria-label="{{ week_status_labels[key] }}">
+            {% for it in col %}
+              {% set a = it.account %}{% set p = it.snap %}{% set ws = it.week_status %}{% set row = it %}
+              {% set top = (p.reasons_json | rejectattr('signal_type', 'equalto', 'resurfaced') | first) if p else None %}
+              {% set edge = 'border-l-violet-500' if it.carried else ('border-l-blue-500' if it.pinned else (accent[p.category] if p else 'border-l-slate-300')) %}
+              <li id="acct-{{ a.id }}" class="card scroll-mt-24 border-l-4 p-3 {{ edge }} {{ 'cursor-grab active:cursor-grabbing' if is_current }}"
+                  {% if is_current %}draggable="true"{% endif %} data-card="{{ a.id }}" data-status="{{ key }}">
+                <div class="flex items-start justify-between gap-2">
+                  <a href="/account/{{ a.id }}?week={{ selected.isoformat() }}" class="text-sm font-semibold leading-snug hover:underline" draggable="false">{{ a.name }}</a>
+                  {% if it.carried %}<span class="chip shrink-0 bg-violet-50 text-violet-700 ring-violet-200" title="Urgent last week, nothing done since">From last week</span>
+                  {% elif it.pinned %}<span class="chip shrink-0 bg-blue-50 text-blue-700 ring-blue-200" title="Added by you">Added</span>{% endif %}
+                </div>
+                <div class="mt-0.5 text-[12px] text-slate-500">{{ a.segment }} · {{ a.arr_usd | money }} ARR</div>
+                {% if top %}<p class="mt-2 line-clamp-2 text-[13px] text-slate-700" title="{{ top.sentence }}">{{ top.sentence }}</p>{% endif %}
+                {% if it.steps %}
+                  {% set st = it.steps[0] %}
+                  <p class="mt-2 flex gap-1.5 text-[12px] text-slate-600"><span class="mt-px shrink-0 text-emerald-700">{{ icon.arrow("h-3.5 w-3.5") }}</span><span class="line-clamp-2">{{ st.title }}</span></p>
+                  {% if st.planned %}<span class="mt-1.5 inline-flex chip bg-emerald-50 text-emerald-800 ring-emerald-200">{{ icon.clock("h-3 w-3") }} Next step · {{ st.planned.kind | capitalize }} · {{ st.planned.scheduled_for.strftime('%a %d %b, %H:%M') }}</span>{% endif %}
+                {% endif %}
+                {% if ws.note %}<p class="mt-2 line-clamp-2 text-[12px] text-slate-700">“{{ ws.note }}”</p>{% endif %}
+                {% if is_current %}
+                  <div class="mt-2.5 flex items-center gap-1.5 border-t border-slate-100 pt-2.5">
+                    <form method="post" action="/account-status" data-status-form="{{ a.id }}">
+                      <input type="hidden" name="account_id" value="{{ a.id }}"><input type="hidden" name="next" value="{{ here }}">
+                      <label for="bws-{{ a.id }}" class="sr-only">Status of {{ a.name }}</label>
+                      <select id="bws-{{ a.id }}" name="status" class="input w-auto py-0.5 pl-1.5 pr-6 text-[12px]" data-status-select="{{ a.id }}" data-current="{{ ws.status }}" autocomplete="off" draggable="false">
+                        {% for k in week_status_keys %}<option value="{{ k }}" {{ 'selected' if k == ws.status }}>{{ week_status_labels[k] }}</option>{% endfor %}
+                      </select>
+                    </form>
+                    <a href="/account/{{ a.id }}?week={{ selected.isoformat() }}" class="ml-auto inline-flex items-center gap-0.5 whitespace-nowrap rounded-md px-1.5 py-1 text-[12px] text-slate-500 hover:bg-slate-100 hover:text-slate-900" draggable="false">Open {{ icon.arrow("h-3 w-3") }}</a>
+                  </div>
+                  {% include "_status_dialog.html" %}
+                {% endif %}
+              </li>
+            {% else %}
+              <li class="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-[12px] text-slate-400" data-empty>Drop here</li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endfor %}
+    </div>
+  </div>
+{% else %}
+{% for cat, rows in groups if rows %}
+  {% set urgent = cat == 'act_now' %}
+  <section class="mt-8" aria-labelledby="h-{{ cat }}">
+    <div class="flex items-baseline gap-2">
+      <h2 id="h-{{ cat }}" class="section-title">{{ CATEGORY_LABELS[cat] }}</h2>
+      <span class="text-sm tabular-nums text-slate-400">{{ rows | length }}</span>
+    </div>
+    {% if group_help.get(cat) %}<p class="mt-0.5 text-[13px] text-slate-500">{{ group_help[cat] }}</p>{% endif %}
+    <div class="mt-3 {{ 'space-y-3' if urgent else 'card divide-y divide-slate-100' }}">
+      {% for row in rows %}
+        {% set p = row.snap %}{% set a = row.account %}{% set fb = row.feedback %}
+        {% set top = (p.reasons_json | rejectattr('signal_type', 'equalto', 'resurfaced') | first) %}
+        {% set full = urgent and not fb %}
+        {% if full %}
+          <article id="acct-{{ a.id }}" class="card scroll-mt-24 border-l-4 {{ accent[p.category] }} {{ 'opacity-70' if fb }}">
+            <div class="p-4 sm:p-5">
+              <div class="flex items-start justify-between gap-3">{% include "_week_head.html" %}</div>
+              {% include "_week_body.html" %}
+            </div>
+          </article>
+        {% else %}
+          <details id="acct-{{ a.id }}" class="group scroll-mt-24 {{ ('card border-l-4 ' ~ accent[p.category]) if urgent }} {{ 'opacity-70' if fb }}">
+            <summary class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-slate-50/70 sm:px-5 group-first:rounded-t-xl">
+              {% include "_week_head.html" %}
+              {% if row.week_status %}{% set wst = row.week_status.status %}
+                <span class="mt-0.5 inline-flex shrink-0 items-center gap-1.5 text-[13px] text-slate-600"><span class="h-2 w-2 rounded-full {{ {'open': 'bg-slate-300', 'working': 'bg-blue-500', 'blocked': 'bg-amber-500', 'completed': 'bg-emerald-500'}[wst] }}" aria-hidden="true"></span>{{ week_status_labels[wst] }}</span>
+              {% endif %}
+              <span class="mt-1 shrink-0 text-slate-400 transition-transform group-open:rotate-90">{{ icon.arrow("h-4 w-4") }}</span>
+            </summary>
+            <div class="px-4 pb-4 sm:px-5">{% include "_week_body.html" %}</div>
+          </details>
+        {% endif %}
+
+        {% if is_current and not fb %}
+          {# Not now #}
+          <dialog id="dlg-later-{{ a.id }}" class="dialog" aria-labelledby="t-later-{{ a.id }}">
+            <form method="post" action="/feedback" class="space-y-4 p-5">
+              <input type="hidden" name="snapshot_id" value="{{ p.id }}"><input type="hidden" name="action" value="dismissed"><input type="hidden" name="next" value="{{ here }}">
+              <div><h3 id="t-later-{{ a.id }}" class="section-title">Not now: {{ a.name }}</h3>
+                <p class="mt-1 text-sm text-slate-500">It leaves your list for 3 weeks, or until the date you pick. It comes back early if things get more than 30% worse.</p></div>
+              <fieldset class="space-y-1.5"><legend class="label mb-1">Why?</legend>
+                {% for code in dismiss_reasons %}
+                  <label class="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm has-[:checked]:border-slate-900 has-[:checked]:bg-slate-50"><input type="radio" name="reason_code" value="{{ code }}" required> {{ REASON_LABELS.get(code, code) }}</label>
+                {% endfor %}
+              </fieldset>
+              <label class="block"><span class="label">Snooze until <span class="font-normal text-slate-400">(optional)</span></span>
+                <input type="date" name="snooze_until" min="{{ (selected + timedelta(days=1)).isoformat() }}" max="{{ (selected + timedelta(days=120)).isoformat() }}" class="input mt-1"></label>
+              <label class="block"><span class="label">Note <span class="font-normal text-slate-400">(optional)</span></span><textarea name="note" rows="2" maxlength="1000" class="input mt-1"></textarea></label>
+              <div class="flex justify-end gap-2"><button type="button" class="btn-secondary" data-close>Cancel</button><button class="btn-primary">Hide for now</button></div>
+            </form>
+          </dialog>
+          {# Wrong priority #}
+          <dialog id="dlg-wrong-{{ a.id }}" class="dialog" aria-labelledby="t-wrong-{{ a.id }}">
+            <form method="post" action="/feedback" class="space-y-4 p-5" data-wrong-form>
+              <input type="hidden" name="snapshot_id" value="{{ p.id }}"><input type="hidden" name="action" value="wrongly_prioritised"><input type="hidden" name="next" value="{{ here }}">
+              <div><h3 id="t-wrong-{{ a.id }}" class="section-title">Wrong priority: {{ a.name }}</h3>
+                <p class="mt-1 text-sm text-slate-500">Your answer tunes the model. Your manager sees it in the accuracy review.</p></div>
+              <fieldset><legend class="label mb-1.5">This account should be</legend>
+                <div class="grid grid-cols-2 gap-2">
+                  <label class="flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm has-[:checked]:border-slate-900 has-[:checked]:bg-slate-50"><input type="radio" name="direction" value="deprioritise" required> ↓ Lower</label>
+                  <label class="flex items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm has-[:checked]:border-slate-900 has-[:checked]:bg-slate-50"><input type="radio" name="direction" value="escalate" required> ↑ Higher</label>
+                </div></fieldset>
+              <fieldset><legend class="label mb-1.5">Why?</legend>
+                {% for dir, codes in [("deprioritise", wrong_reasons), ("escalate", escalate_reasons)] %}
+                  <div data-reasons="{{ dir }}" class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                    {% for code in codes %}<label class="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm has-[:checked]:border-slate-900 has-[:checked]:bg-slate-50"><input type="radio" name="reason_code" value="{{ code }}" required> {{ REASON_LABELS.get(code, code) }}</label>{% endfor %}
+                  </div>
+                {% endfor %}
+                <p data-pick-direction class="text-xs text-slate-400">Pick lower or higher first.</p>
+              </fieldset>
+              <div data-fix class="hidden space-y-3 rounded-lg bg-slate-50 p-3">
+                <label class="block"><span class="label">Which data is wrong?</span>
+                  <select name="fix_signal" class="input mt-1">
+                    {% for r in p.reasons_json if r.signal_id %}{% set own = owner_for(r.signal_type) %}<option value="{{ r.signal_type }}">{{ own[0] }} ({{ SOURCE_LABELS.get(own[1], own[1]) }})</option>{% endfor %}
+                  </select></label>
+                <label class="block"><span class="label">Correct value <span class="font-normal text-slate-400">(optional)</span></span><input name="fix_value" maxlength="300" class="input mt-1" placeholder="e.g. Renewed until Nov 2027"></label>
+                <p class="text-xs text-slate-500">Sent to the team that owns that field, so it's fixed at the source.</p>
+              </div>
+              <label class="block"><span class="label">Note <span class="font-normal text-slate-400">(optional)</span></span><textarea name="note" rows="2" maxlength="1000" class="input mt-1"></textarea></label>
+              <div class="flex justify-end gap-2"><button type="button" class="btn-secondary" data-close>Cancel</button><button class="btn-primary">Send feedback</button></div>
+            </form>
+          </dialog>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+{% endfor %}
+
+{# ---------- Added by you: accounts the AM put on the list by hand ---------- #}
+{% if added %}
+  <section class="mt-8" aria-labelledby="h-added">
+    <div class="flex items-baseline gap-2">
+      <h2 id="h-added" class="section-title">Added by you</h2>
+      <span class="text-sm tabular-nums text-slate-400">{{ added | length }}</span>
+    </div>
+    <p class="mt-0.5 text-[13px] text-slate-500">You put these on this week's list. They don't use up your {{ cap }}.</p>
+    <div class="mt-3 space-y-3">
+      {% for ad in added %}
+        {% set a = ad.account %}{% set p = ad.snap %}{% set fb = ad.feedback %}{% set row = ad %}{% set full = True %}
+        {% set top = (p.reasons_json | rejectattr('signal_type', 'equalto', 'resurfaced') | first) %}
+        <article id="acct-{{ a.id }}" class="card scroll-mt-24 border-l-4 border-l-blue-500">
+          <div class="p-4 sm:p-5">
+            <div class="flex items-start justify-between gap-3">{% include "_week_head.html" %}</div>
+            {% if not top %}
+              <p class="mt-3 text-sm text-slate-600">No open signals.{% if ad.book.touch %} Last touch {{ (today - ad.book.touch[0]).days }} days ago ({{ ad.book.touch[1] }}).{% endif %}</p>
+            {% endif %}
+            {% include "_week_body.html" %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+
+{% endif %}
+
+{# ---------- Outstanding from previous weeks: urgent before, nothing done since (full cards) ---------- #}
+{% if carried and view != 'board' %}
+  <section id="left-last-week" class="mt-10 scroll-mt-24" aria-labelledby="h-left">
+    <div class="flex items-baseline gap-2">
+      <h2 id="h-left" class="section-title">Outstanding from previous weeks</h2>
+      <span class="text-sm tabular-nums text-violet-700">{{ carried | length }}</span>
+    </div>
+    <p class="mt-0.5 text-[13px] text-slate-500">Urgent last week, and nothing was done. Most are probably blocked: unblock them, or set them aside.</p>
+    <div class="mt-3 space-y-3">
+      {% for row in carried %}
+        {% set p = row.snap %}{% set a = row.account %}{% set fb = row.feedback %}{% set full = not fb %}
+        {% set top = (p.reasons_json | rejectattr('signal_type', 'equalto', 'resurfaced') | first) %}
+        <article id="acct-{{ a.id }}" class="card scroll-mt-24 border-l-4 border-l-violet-500 {{ 'opacity-70' if fb }}">
+          <div class="p-4 sm:p-5">
+            <div class="flex items-start justify-between gap-3">{% include "_week_head.html" %}</div>
+            {% if row.last_reason and row.last_reason != (top.sentence if top else None) %}
+              <p class="mt-2 text-[13px] text-slate-500">Last week: {{ row.last_reason }}</p>
+            {% endif %}
+            {% include "_week_body.html" %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
+</div>
+
+<script>
+  // Remember List or Board for next time.
+  (() => {
+    const params = new URLSearchParams(location.search);
+    try {
+      if (params.get("view")) localStorage.setItem("p1-view", params.get("view"));
+      else if (localStorage.getItem("p1-view") === "board") { params.set("view", "board"); location.replace("?" + params + location.hash); }
+    } catch (e) {}
+  })();
+  const openDetails = id => { const d = document.getElementById(id); if (d && d.tagName === "DETAILS") d.open = true; };
+  document.querySelectorAll("[data-open-details]").forEach(el => el.addEventListener("click", () => openDetails(el.dataset.openDetails)));
+  if (location.hash) openDetails(location.hash.slice(1));
+  // On a phone the full book list would push the work far down: start it folded.
+  if (innerWidth < 640 && document.getElementById("book-list")) document.getElementById("book-list").open = false;
+  // Status this week: Open / Working save straight away; Completed and Blocked ask for a short note first.
+  function openStatusDialog(id, status, note) {
+    const d = document.getElementById(`dlg-status-${id}`); if (!d) return;
+    const done = status === "completed";
+    d.querySelector("[data-dlg-status]").value = status;
+    d.querySelector("[data-dlg-title]").textContent = done ? "Completed" : "Blocked";
+    d.querySelector("[data-dlg-label]").textContent = done ? "How was it handled?" : "What's blocking it, and who can help?";
+    const box = d.querySelector("[data-dlg-complete]"); if (box) box.classList.toggle("hidden", !done);
+    if (note) { const t = d.querySelector("[data-dlg-note]"); t.value = (t.value.trim() ? t.value.trim() + "\n\n" : "") + note; }
+    d.showModal();
+  }
+  document.querySelectorAll("[data-status-select]").forEach(sel => sel.addEventListener("change", () => {
+    if (sel.value === "completed" || sel.value === "blocked") {
+      const id = sel.dataset.statusSelect, v = sel.value;
+      sel.value = sel.dataset.current;  // stays as it was unless the dialog is saved
+      openStatusDialog(id, v);
+    } else { sel.form.submit(); }
+  }));
+  // Board: drag a card to another column. Open and Working save straight away; Completed and Blocked ask for a note.
+  let dragged = null;
+  document.querySelectorAll("[data-card][draggable=true]").forEach(c => {
+    c.addEventListener("dragstart", e => { dragged = c; c.classList.add("opacity-50"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.dataset.card); });
+    c.addEventListener("dragend", () => { c.classList.remove("opacity-50"); dragged = null; });
+  });
+  document.querySelectorAll("[data-drop]").forEach(zone => {
+    const on = ["bg-blue-50", "ring-2", "ring-blue-300"];
+    zone.addEventListener("dragover", e => { if (!dragged) return; e.preventDefault(); zone.classList.add(...on); });
+    zone.addEventListener("dragleave", e => { if (!zone.contains(e.relatedTarget)) zone.classList.remove(...on); });
+    zone.addEventListener("drop", e => {
+      e.preventDefault(); zone.classList.remove(...on);
+      if (!dragged) return;
+      const to = zone.dataset.drop, id = dragged.dataset.card;
+      if (to === dragged.dataset.status) return;
+      if (to === "completed" || to === "blocked") { openStatusDialog(id, to); return; }
+      const empty = zone.querySelector("[data-empty]"); if (empty) empty.remove();
+      zone.prepend(dragged);
+      const form = dragged.querySelector("form[data-status-form]");
+      form.querySelector("select").value = to; form.submit();
+    });
+  });
+  document.querySelectorAll("[data-use-transcript]").forEach(b => b.addEventListener("click", () =>
+    openStatusDialog(b.dataset.useTranscript, "completed", b.dataset.note)));
+  // Dialogs: "Not now" and "Wrong priority".
+  document.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => {
+    b.closest("details") && (b.closest("details").open = false);
+    document.getElementById(b.dataset.open).showModal();
+  }));
+  document.querySelectorAll("dialog [data-close]").forEach(b => b.addEventListener("click", () => b.closest("dialog").close()));
+  document.querySelectorAll("dialog").forEach(d => d.addEventListener("click", e => { if (e.target === d) d.close(); }));
+  // Wrong priority: reasons depend on the direction; "the data is wrong" asks which field.
+  document.querySelectorAll("[data-wrong-form]").forEach(form => {
+    const fix = form.querySelector("[data-fix]"), hint = form.querySelector("[data-pick-direction]");
+    const sync = () => {
+      const dir = (form.querySelector("input[name=direction]:checked") || {}).value;
+      hint.classList.toggle("hidden", !!dir);
+      form.querySelectorAll("[data-reasons]").forEach(g => {
+        const show = g.dataset.reasons === dir;
+        g.classList.toggle("hidden", !show);
+        g.querySelectorAll("input").forEach(i => { i.disabled = !show; if (!show) i.checked = false; });
+      });
+      const wrong = (form.querySelector("input[name=reason_code]:checked") || {}).value === "data_is_wrong";
+      fix.classList.toggle("hidden", !wrong);
+      fix.querySelectorAll("select, input").forEach(i => i.disabled = !wrong);
+    };
+    form.addEventListener("change", sync); sync();
+  });
+  // Only one popover open at a time; Escape and outside clicks close them.
+  const pops = [...document.querySelectorAll("[data-popover]")];
+  pops.forEach(d => d.addEventListener("toggle", () => { if (d.open) pops.forEach(o => o !== d && (o.open = false)); }));
+  document.addEventListener("click", e => pops.forEach(d => { if (d.open && !d.contains(e.target)) d.open = false; }));
+  document.addEventListener("keydown", e => { if (e.key === "Escape") pops.forEach(d => d.open = false); });
+</script>
+{% endblock %}

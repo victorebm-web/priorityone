@@ -1,0 +1,31 @@
+{# One suggested next step: plan it (who, how, when), or show it planned; plus its Salesforce Task if there is one.
+   Expects st, a, here, primary (bool), can_add (bool); show_email (bool) is optional. #}
+<li class="flex items-start gap-2.5 text-sm">
+  <span class="mt-0.5 shrink-0 text-emerald-700 sm:mt-1.5">{{ icon.arrow("h-4 w-4") }}</span>
+  <div class="min-w-0 flex-1 sm:flex sm:items-center sm:gap-3">
+    <span class="block text-slate-800 sm:flex-1">{{ st.title }}</span>
+    <div class="mt-1.5 flex flex-wrap items-center gap-2 sm:mt-0 sm:shrink-0">
+      {% if show_email is defined and show_email and st.kind == 'email' and st.contact_id %}
+        <a href="#messages" data-compose="{{ st.contact_id }}" class="btn-ghost btn-sm">{{ icon.send("h-3.5 w-3.5") }} Email {{ st.contact_first }}</a>
+      {% endif %}
+      {% if st.planned %}
+        {% set pl = st.planned %}
+        <span class="chip bg-emerald-50 text-emerald-800 ring-emerald-200" title="{{ pl.title }}{{ ' with ' ~ pl.contact.name if pl.contact }} · Salesforce event {{ pl.salesforce_id }}">{{ icon.clock("h-3 w-3") }} Next step · {{ {'call': 'Call', 'meeting': 'Meeting', 'email': 'Email'}[pl.kind] }} · {{ pl.scheduled_for.strftime('%a %d %b, %H:%M') }}</span>
+      {% endif %}
+      {% if can_add and not st.planned and show_email is defined and show_email %}
+        <a href="/next-steps/new?account_id={{ a.id }}&signal_id={{ st.signal_id }}&step={{ st.title | urlencode }}&next={{ here | urlencode }}"
+           class="btn-sf btn-xs" title="Next step: book a call, meeting or email (who, how, when), logged as a Salesforce event">{{ icon.clock("h-3.5 w-3.5") }} Plan next step</a>
+      {% endif %}
+      {% if can_add and not st.task %}
+        <a href="/salesforce/tasks/new?account_id={{ a.id }}&signal_id={{ st.signal_id }}&step={{ st.title | urlencode }}&next={{ here | urlencode }}"
+           class="btn-sf btn-xs" title="Task: a to-do in Salesforce with a due date. Review the pre-filled Task, then create it">{{ icon.task("h-3.5 w-3.5") }} Create Task</a>
+      {% endif %}
+      {% if st.task %}
+        {% set late = st.task.due_date < today_d %}
+        <a href="https://adyen.my.salesforce.com/{{ st.task.salesforce_id }}" target="_blank" rel="noopener"
+           class="chip {{ 'bg-red-50 text-red-800 ring-red-200' if late else SF_STATUS_PILL[st.task.status] }} hover:underline"
+           title="{{ st.task.subject }}">{{ icon.task("h-3 w-3") }} Task · {{ st.task.status_label }} · {{ 'overdue since' if late else 'due' }} {{ st.task.due_date | short_date }}</a>
+      {% endif %}
+    </div>
+  </div>
+</li>

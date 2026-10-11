@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}PriorityOne{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script>
+    // Palette taken from adyen.com's own design tokens: one navy ink (#001222) at stepped
+    // opacities on white, a single green for primary actions, and their success/error colours.
+    // Tailwind's slate/emerald/red names are remapped so every template picks it up.
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            slate: { 50: "#F4F5F6", 100: "#ECEDEF", 200: "#D2D5D8", 300: "#B2B8BD", 400: "#8C949C",
+                     500: "#646F79", 600: "#475460", 700: "#303F4C", 800: "#1A2A38", 900: "#001222" },
+            emerald: { 50: "#F0FCF6", 100: "#CFF6E3", 200: "#A6EFCB", 300: "#5CE2A0", 400: "#2CDA84",
+                       500: "#00D16A", 600: "#00A152", 700: "#007F41", 800: "#005C2F", 900: "#003D1F" },
+            blue: { 50: "#EEF2FB", 100: "#DCE4F6", 200: "#B9C8EC", 500: "#3860BE", 600: "#2F52A3", 700: "#2A4A93" },
+            red: { 50: "#FCF3F0", 100: "#F8E3DB", 200: "#F1C6B8", 300: "#E9A48D", 400: "#F9692F",
+                   500: "#F73F01", 600: "#E03901", 700: "#CE3401", 800: "#A32901", 900: "#7A1F01" },
+          },
+          fontFamily: { sans: ["Inter", "Helvetica Neue", "Helvetica", "Arial", "sans-serif"] },
+          boxShadow: {
+            card: "0 1px 2px rgba(0,18,34,0.04), 0 1px 1px rgba(0,18,34,0.02)",
+            pop: "0 12px 32px -8px rgba(0,18,34,0.22), 0 2px 6px rgba(0,18,34,0.06)",
+          },
+        },
+      },
+    };
+  </script>
+  <style type="text/tailwindcss">
+    @layer base {
+      :focus-visible { @apply outline-none ring-2 ring-blue-500 ring-offset-2 ring-offset-white; }
+      h1, h2, h3 { @apply text-slate-900; }
+      ::selection { @apply bg-emerald-100; }
+      /* Inter's alternate digits and a straight-legged "l" read better in dense numbers. */
+      html { font-feature-settings: "cv11", "ss01", "ss03"; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    }
+    @layer components {
+      /* Surfaces */
+      .card { @apply rounded-xl border border-slate-200 bg-white shadow-card; }
+      .card-pad { @apply p-5; }
+      .section-title { @apply text-[15px] font-semibold tracking-tight text-slate-900; }
+      .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500; }
+      .page-title { @apply text-[26px] font-semibold leading-tight tracking-tight text-slate-900; }
+      .page-sub { @apply mt-1 text-sm text-slate-500; }
+      .muted { @apply text-slate-500; }
+      /* Buttons: Adyen's primary CTA is green with navy text and 5px corners. */
+      .btn { @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-[5px] px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50; }
+      .btn-sm { @apply px-2.5 py-1 text-xs; }
+      .btn-primary { @apply btn bg-emerald-500 text-slate-900 hover:bg-emerald-600; }
+      .btn-secondary { @apply btn border border-slate-300 bg-white text-slate-800 hover:border-slate-400 hover:bg-slate-50; }
+      .btn-ghost { @apply btn text-slate-600 hover:bg-slate-100 hover:text-slate-900; }
+      .btn-dark { @apply btn bg-slate-900 text-white hover:bg-slate-700; }
+      /* Salesforce actions use Salesforce's brand blue, so it's clear where the Task will live. */
+      .btn-sf { @apply btn bg-[#0176D3] text-white hover:bg-[#014486]; }
+      /* Extra small: after the colours so its padding wins. */
+      .btn-xs { @apply gap-1 px-2 py-0.5 text-[11.5px]; }
+      /* Pills, chips, inputs */
+      .no-scrollbar { scrollbar-width: none; }
+      /* Information box on hover or keyboard focus (e.g. "Data incomplete"). */
+      .tip { @apply relative inline-flex outline-none; }
+      .tip-box { @apply pointer-events-none invisible absolute left-0 top-full z-50 mt-2 w-72 max-w-[80vw] rounded-lg bg-slate-900 p-3 text-left text-[12px] font-normal leading-relaxed text-white opacity-0 shadow-pop transition-opacity duration-150; }
+      .tip:hover .tip-box, .tip:focus .tip-box, .tip:focus-within .tip-box { @apply visible opacity-100; }
+      .js-tips .tip .tip-box { display: none; }  /* shown in #tip-layer instead */
+      .cc-chip { @apply inline-flex cursor-pointer select-none items-center gap-1.5 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[13px] text-slate-700 hover:border-slate-500 has-[:checked]:border-slate-900 has-[:checked]:bg-slate-900 has-[:checked]:text-white has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-500; }
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .pill { @apply inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset; }
+      .chip { @apply inline-flex items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset; }
+      .input { @apply w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20; }
+      .label { @apply block text-xs font-medium text-slate-600; }
+      /* KPI tiles */
+      .kpi { @apply card px-4 py-3.5; }
+      .kpi-label { @apply eyebrow; }
+      .kpi-value { @apply mt-1.5 text-[22px] font-semibold tabular-nums tracking-tight text-slate-900; }
+      .kpi-sub { @apply mt-0.5 text-xs text-slate-500; }
+      /* Tables */
+      .tbl { @apply w-full text-sm; }
+      .tbl thead th { @apply border-b border-slate-200 bg-slate-50/60 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500; }
+      .tbl tbody td { @apply border-b border-slate-100 px-3 py-2.5 align-top; }
+      .tbl tbody tr:last-child td { @apply border-b-0; }
+      .tbl tbody tr:hover td { @apply bg-slate-50/50; }
+      /* Segmented control */
+      .seg { @apply inline-flex rounded-md border border-slate-300 bg-white p-0.5 text-sm; }
+      .seg > * { @apply rounded px-3 py-1 text-slate-600 hover:text-slate-900; }
+      .seg > [aria-selected="true"], .seg > .on { @apply bg-slate-900 text-white hover:text-white; }
+      /* Popovers and dialogs */
+      .popover { @apply absolute right-0 z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 shadow-pop; }
+      .dialog { @apply w-[min(30rem,calc(100vw-2rem))] rounded-xl border border-slate-200 p-0 shadow-pop backdrop:bg-slate-900/40; }
+      .link { @apply font-medium text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900; }
+    }
+  </style>
+  <style>
+    /* Contain absolutely positioned screen-reader labels inside scrollable tables, so they
+       don't widen the page on phones. */
+    .overflow-x-auto { position: relative; }
+    details > summary { list-style: none; cursor: pointer; }
+    /* Closed popovers take no space (Chrome otherwise still lays them out and widens the page). */
+    details:not([open]) > :not(summary) { display: none; }
+    details > summary::-webkit-details-marker { display: none; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+    .toast-in { animation: toastIn .18s ease-out; }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+  <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50 btn-dark">Skip to content</a>
+  <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
+      <a href="/" class="flex items-center gap-2" aria-label="PriorityOne home">
+        <span class="flex h-7 w-7 items-center justify-center rounded-md bg-slate-900 text-[11px] font-bold text-emerald-400">P1</span>
+        <span class="hidden text-[17px] font-semibold tracking-tight min-[400px]:inline">Priority<span class="text-emerald-600">One</span></span>
+      </a>
+      <nav class="order-3 -mx-1 no-scrollbar flex w-full gap-1 overflow-x-auto text-sm sm:order-none sm:w-auto" aria-label="Main">
+        {% if user.role == "am" %}{% set links = [("/", "This Week"), ("/scorecard", "Scorecard"), ("/slack", "Slack")] + ([] if am_only else [("/manager", "Team")]) + [("/connectors", "Connectors"), ("/health", "Health")] %}
+        {% elif user.role == "manager" %}{% set links = [("/manager", "Team"), ("/scorecard", "Scorecard"), ("/calibration", "Calibration"), ("/settings", "Settings"), ("/connectors", "Connectors"), ("/health", "Health")] %}
+        {% else %}{% set links = [("/org", "Org"), ("/manager", "Teams"), ("/scorecard", "Scorecard"), ("/calibration", "Calibration"), ("/settings", "Settings"), ("/connectors", "Connectors"), ("/health", "Health")] %}{% endif %}
+        {% for href, label in links %}
+          {% set active = path == href or (href != "/" and path.startswith(href)) or (href == "/" and (path.startswith("/account") or path.startswith("/tasks") or path.startswith("/my-1on1"))) %}
+          <a href="{{ href }}" class="whitespace-nowrap rounded-md px-2.5 py-1.5 {{ 'bg-slate-100 font-medium text-slate-900' if active else 'text-slate-500 hover:bg-slate-50 hover:text-slate-900' }}"{{ ' aria-current="page"' if active }}>{{ label }}</a>
+        {% endfor %}
+      </nav>
+      <div class="ml-auto flex min-w-0 items-center gap-2 text-sm">
+        <span class="hidden h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 sm:flex text-[11px] font-semibold text-emerald-800" aria-hidden="true">{{ user.name.split()[0][0] }}{{ user.name.split()[-1][0] }}</span>
+        <label for="user-switch" class="sr-only">Viewing as</label>
+        <select id="user-switch" class="max-w-[11rem] rounded-md border border-slate-300 bg-white py-1 pl-2 pr-7 text-sm" onchange="switchUser(this.value)" title="Demo: switch user">
+          {% for role, label in ([("am", "Account managers")] if am_only else [("am", "Account managers"), ("manager", "Managers"), ("vp", "VP")]) %}
+            <optgroup label="{{ label }}">
+              {% for u in users if u.role == role %}<option value="{{ u.id }}" {{ 'selected' if u.id == user.id }}>{{ u.name }}</option>{% endfor %}
+            </optgroup>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </header>
+  <main id="main" class="mx-auto max-w-6xl px-4 pb-10 pt-6">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="mx-auto max-w-6xl px-4 pb-8 text-xs text-slate-400">
+    Prototype · All accounts, people, figures and links are invented mock data.
+  </footer>
+  <div id="toast" role="status" aria-live="polite" class="pointer-events-none fixed inset-x-0 bottom-5 z-50 flex justify-center px-4"></div>
+  <script>
+    function switchUser(id) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("user", id);
+      url.hash = "";
+      window.location.href = url.toString();
+    }
+    // One toast for the whole app. Pages call toast("…"), or the server redirects with ?toast=…
+    function toast(msg, tone) {
+      const host = document.getElementById("toast");
+      const el = document.createElement("div");
+      el.className = "toast-in pointer-events-auto flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm shadow-pop " +
+        (tone === "error" ? "bg-red-700 text-white" : "bg-slate-900 text-white");
+      el.textContent = msg;
+      host.innerHTML = ""; host.appendChild(el);
+      clearTimeout(host._t); host._t = setTimeout(() => el.remove(), 3800);
+    }
+    (() => {
+      const url = new URL(location.href), msg = url.searchParams.get("toast");
+      if (msg) { toast(msg); url.searchParams.delete("toast"); history.replaceState(null, "", url.pathname + url.search + url.hash); }
+    })();
+  </script>
+<div id="tip-layer" role="tooltip" class="pointer-events-none fixed z-[100] hidden w-72 max-w-[calc(100vw-1.5rem)] rounded-lg bg-slate-900 p-3 text-left text-[12px] leading-relaxed text-white shadow-pop"></div>
+<script>
+  // Information boxes ("Data incomplete" and similar) are shown in one layer above the page, so a faded
+  // or overlapping card can never dim or cover them. Without JavaScript the in-place CSS version still works.
+  (() => {
+    const layer = document.getElementById("tip-layer");
+    document.documentElement.classList.add("js-tips");
+    let current = null;
+    function show(tip) {
+      const box = tip.querySelector(".tip-box"); if (!box) return;
+      current = tip;
+      layer.innerHTML = box.innerHTML;
+      layer.classList.remove("hidden");
+      const r = tip.getBoundingClientRect(), w = layer.offsetWidth, h = layer.offsetHeight;
+      const left = Math.max(12, Math.min(r.left, innerWidth - w - 12));
+      const below = r.bottom + 8, above = r.top - h - 8;
+      layer.style.left = left + "px";
+      layer.style.top = (below + h > innerHeight - 8 && above > 8 ? above : below) + "px";
+    }
+    function hide(tip) { if (!tip || tip === current) { layer.classList.add("hidden"); current = null; } }
+    document.addEventListener("mouseover", e => { const t = e.target.closest(".tip"); if (t && t !== current) show(t); else if (!t && current && !current.matches(":focus-within")) hide(); });
+    document.addEventListener("focusin", e => { const t = e.target.closest(".tip"); if (t) show(t); });
+    document.addEventListener("focusout", e => { const t = e.target.closest(".tip"); if (t) hide(t); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") hide(); });
+    addEventListener("scroll", () => hide(), { passive: true });
+  })();
+</script>
+</body>
+</html>
