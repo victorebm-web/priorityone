@@ -25,7 +25,7 @@ feedback) and a VP **org view**. They're built but hidden by default, so the dem
 
 ```bash
 cd priorityone
-./run.sh
+bash run.sh
 ```
 
 Open **http://127.0.0.1:8000**. You're Daniel Okafor, an Account Manager with 30 accounts.
@@ -35,7 +35,7 @@ Open **http://127.0.0.1:8000**. You're Daniel Okafor, an Account Manager with 30
 3. Try **Email**, **Escalate** and **Plan next step**, switch to **Board**, then **Prepare my 1:1 document**.
 4. The **Scorecard** page explains every signal in plain words.
 
-Needs Python 3.9+ and internet access (Tailwind and the Inter font load from a CDN). Running `./run.sh`
+Needs Python 3.9+ and internet access (Tailwind and the Inter font load from a CDN). Running `bash run.sh`
 again resets the demo data. Tests: `.venv/bin/python -m pytest -q`. More: [RUNBOOK.md](RUNBOOK.md),
 [ASSUMPTIONS.md](ASSUMPTIONS.md), [AI_USAGE.md](AI_USAGE.md).
 
@@ -44,10 +44,10 @@ again resets the demo data. Tests: `.venv/bin/python -m pytest -q`. More: [RUNBO
 ## Run it (details)
 
 ```bash
-./run.sh
+bash run.sh
 ```
 
-Then open **http://127.0.0.1:8000** (or `PORT=8001 ./run.sh`).
+Then open **http://127.0.0.1:8000** (or `PORT=8001 bash run.sh`).
 
 `run.sh` does everything in one go:
 1. creates a virtualenv and installs the requirements
@@ -64,7 +64,7 @@ It needs Python 3.9 or newer (3.11+ recommended). No Node, no build step, no acc
 | `python jobs.py [--week D] [--last-weeks N] [--demo-feedback]` | Run the weekly job |
 | `python seed.py` | Rebuild the dataset; prints planted vs detected counts for every pattern |
 | `python export_sources.py` | Write `priorityone_source_data.xlsx`: one tab per source system (Salesforce, payments warehouse, support desk, Gong, Slack, NPS survey, sync log) with the exact seeded rows, plus the tracker's output |
-| `PRIORITYONE_TODAY=2026-10-08 ./run.sh` | Pin "today" for a reproducible demo |
+| `PRIORITYONE_TODAY=2026-10-08 bash run.sh` | Pin "today" for a reproducible demo |
 
 **Optional Claude integration.** It is off by default, and the demo is complete without it. To switch it on:
 - run `pip install anthropic` inside `.venv`. The 1.x SDK needs Python 3.10+.
@@ -75,7 +75,7 @@ under guardrails (see below).
 
 **AM-only by default.** The demo focuses on the Account Manager: the manager and VP views (Team, 1:1 prep,
 Org, Calibration, Settings) are built but hidden from the menu and the user switcher. Start with
-`PRIORITYONE_AM_ONLY=0 ./run.sh` to show them (the rows below marked manager or VP need this).
+`PRIORITYONE_AM_ONLY=0 bash run.sh` to show them (the rows below marked manager or VP need this).
 
 ### A five-minute tour
 

@@ -9,11 +9,11 @@ covers how it would be operated in production.
 
 | Task | Command |
 |---|---|
-| Start with fresh demo data | `./run.sh` (creates `.venv`, seeds, scores 8 weeks, starts on port 8000) |
-| Start on another port | `PORT=8001 ./run.sh` |
+| Start with fresh demo data | `bash run.sh` (creates `.venv`, seeds, scores 8 weeks, starts on port 8000) |
+| Start on another port | `PORT=8001 bash run.sh` |
 | Start **without** resetting data | `.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000` |
 | Stop | `Ctrl+C` in the terminal running it |
-| Reset the demo data | stop, then `./run.sh` again (`seed.py` rebuilds `priorityone.db` from scratch) |
+| Reset the demo data | stop, then `bash run.sh` again (`seed.py` rebuilds `priorityone.db` from scratch) |
 | Run the tests | `.venv/bin/python -m pytest -q` (64 tests, a few seconds) |
 
 Changes to Python files need a restart, since the server doesn't auto-reload. Template changes show
@@ -47,11 +47,11 @@ is stale) or `failed` (with the error).
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Page has no styling, wrong font | No internet: Tailwind and Inter load from a CDN | Connect, reload |
-| `Address already in use` | Another server on 8000 | `PORT=8001 ./run.sh`, or stop the other one |
-| `no such table` after pulling changes | Older database file | Restart. New tables are created at startup; if that fails, `./run.sh` |
+| `Address already in use` | Another server on 8000 | `PORT=8001 bash run.sh`, or stop the other one |
+| `no such table` after pulling changes | Older database file | Restart. New tables are created at startup; if that fails, `bash run.sh` |
 | Empty "This Week" | No snapshot for the current week (e.g. the week rolled over) | `.venv/bin/python jobs.py` |
 | "Data incomplete" on accounts | A source is more than 7 days behind (Gong is stale **on purpose** in the seed) | Expected in the demo |
-| Odd demo data after clicking around | Test clicks are stored | `./run.sh` to reset before a demo |
+| Odd demo data after clicking around | Test clicks are stored | `bash run.sh` to reset before a demo |
 | `Python 3.9+ required` | Old system Python | Install a newer Python 3 and re-run |
 
 With `PRIORITYONE_AM_ONLY=0`, the **Data & jobs** page (`/health`) shows source freshness, the last 12
