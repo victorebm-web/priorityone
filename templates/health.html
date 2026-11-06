@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Health · PriorityOne{% endblock %}
+{% block content %}
+<h1 class="page-title">Operations</h1>
+<p class="page-sub">Is the weekly job running, and is the data it uses fresh?</p>
+
+<div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <section class="card card-pad lg:col-span-1">
+    <h2 class="section-title">Last job run</h2>
+    {% if last %}
+      {% set tone = {'success': 'bg-emerald-100 text-emerald-800', 'partial': 'bg-amber-100 text-amber-800', 'failed': 'bg-red-100 text-red-800', 'running': 'bg-sky-100 text-sky-800'} %}
+      <dl class="mt-3 space-y-2 text-sm">
+        <div class="flex justify-between"><dt class="text-slate-500">Status</dt>
+          <dd><span class="rounded-full px-2 py-0.5 text-xs font-medium {{ tone.get(last.status, '') }}">{{ last.status }}</span></dd></div>
+        <div class="flex justify-between"><dt class="text-slate-500">Week scored</dt><dd>{{ last.week_start | nice_date }}</dd></div>
+        <div class="flex justify-between"><dt class="text-slate-500">Started</dt><dd>{{ last.started_at.strftime('%d %b %Y %H:%M:%S') }}</dd></div>
+        <div class="flex justify-between"><dt class="text-slate-500">Duration</dt>
+          <dd>{{ ('%.0f ms' % ((last.finished_at - last.started_at).total_seconds() * 1000)) if last.finished_at else 'running' }}</dd></div>
+        <div class="flex justify-between"><dt class="text-slate-500">Snapshots written</dt><dd>{{ last.accounts_scored }}</dd></div>
+        <div class="flex justify-between"><dt class="text-slate-500">Stale sources</dt>
+          <dd class="{{ 'text-amber-700' if last.sources_stale }}">{{ last.sources_stale | map('replace', '_', ' ') | join(', ') or 'none' }}</dd></div>
+        {% if last.error %}<div class="text-red-700 text-xs break-all">{{ last.error }}</div>{% endif %}
+      </dl>
+    {% else %}
+      <p class="mt-2 text-sm text-slate-500">The job has never run.</p>
+    {% endif %}
+
+    <form method="post" action="/admin/run-job" class="mt-5 border-t border-slate-100 pt-4 space-y-2 text-sm"
+          onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Running…';">
+      <label for="week_start" class="block text-slate-500">Re-run the weekly job for</label>
+      <select id="week_start" name="week_start" class="input py-1">
+        {% for w in weeks %}<option value="{{ w.isoformat() }}" {{ 'selected' if w == current_week }}>{{ w | week_label }}</option>{% endfor %}
+      </select>
+      <input type="hidden" name="next" value="/health">
+      <button class="btn-primary w-full">Run weekly job</button>
+      <p class="text-xs text-slate-400">Idempotent: replaces that week's snapshots and keeps feedback.</p>
+    </form>
+  </section>
+
+  <section class="card lg:col-span-2">
+    <h2 class="section-title px-5 pt-5">Sources</h2>
+    <p class="px-4 text-xs text-slate-400">Stale = newest sync more than 7 days older than the current week ({{ current_week | nice_date }}). Snapshots that use a stale source are marked partial.</p>
+    <div class="overflow-x-auto">
+      <table class="tbl mt-3">
+        <thead>
+          <tr><th class="px-4 py-2 font-medium">Source</th><th class="px-2 py-2 font-medium">Newest record</th>
+              <th class="px-2 py-2 font-medium text-right">Rows</th><th class="px-2 py-2 font-medium text-right">Signal events</th>
+              <th class="px-4 py-2 font-medium">Stale</th></tr>
+        </thead>
+        <tbody>
+          {% for src in sources %}
+            <tr>
+              <td class="px-4 py-2 font-medium">{{ SOURCE_LABELS.get(src.name, src.name) }}</td>
+              <td class="px-2 py-2">{{ src.newest | nice_date }} <span class="text-xs text-slate-400">{% if src.lag_days is not none %}({{ src.lag_days }}d before week start){% endif %}</span></td>
+              <td class="px-2 py-2 text-right tabular-nums">{% if src.raw_rows is not none %}{{ '{:,}'.format(src.raw_rows) }} <span class="text-xs text-slate-400">{{ src.raw_label }}</span>{% else %}<span class="text-slate-400">–</span>{% endif %}</td>
+              <td class="px-2 py-2 text-right tabular-nums">{{ src.signal_events }}</td>
+              <td class="px-4 py-2">
+                {% if src.stale %}<span class="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 text-xs font-medium">yes</span>
+                {% else %}<span class="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-xs font-medium">no</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="px-4 pb-4 pt-2 text-xs text-slate-400">Rows are raw records held in PriorityOne. Support and Slack only feed signal events here.</p>
+  </section>
+</div>
+
+<section class="mt-6 card" id="data-fixes">
+  <h2 class="section-title px-5 pt-5">Data-fix requests</h2>
+  <p class="px-4 text-xs text-slate-400">Raised when an AM marks a reason “the data is wrong”. Each goes to the team that owns the field.</p>
+  {% if fixes %}
+    <ul class="mt-2 divide-y divide-slate-100 text-sm">
+      {% for f in fixes %}
+        <li class="flex flex-wrap items-center gap-2 px-4 py-2">
+          <span class="font-medium">{{ f.account.name }}</span>
+          <span>{{ f.field_label }} <span class="text-xs text-slate-500">({{ SOURCE_LABELS.get(f.source_system, f.source_system) }})</span></span>
+          {% if f.suggested_value %}<span class="text-xs text-slate-600">should be “{{ f.suggested_value }}”</span>{% endif %}
+          <span class="text-xs text-slate-500">· {{ names[f.raised_by] }} · {{ f.created_at | short_date }} → {{ f.owner_team }}</span>
+          {% if f.status == 'open' %}
+            <form method="post" action="/datafix/{{ f.id }}/resolve" class="ml-auto"><input type="hidden" name="next" value="/health">
+              <button class="btn-secondary btn-sm">Mark fixed</button></form>
+          {% else %}<span class="ml-auto rounded bg-emerald-50 px-1.5 text-[11px] text-emerald-800">fixed {{ f.resolved_at | short_date }}</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}<p class="px-4 py-3 text-sm text-slate-500">No requests.</p>{% endif %}
+</section>
+
+<div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6" id="simulate">
+  <section class="card card-pad">
+    <h2 class="section-title">Demo: simulate events</h2>
+    <form method="post" action="/admin/simulate-incident" class="mt-3 flex flex-wrap items-end gap-2 text-sm">
+      <input type="hidden" name="next" value="/health#simulate">
+      <label><span class="label">Incident</span>
+        <select name="kind" class="input mt-1 w-auto">
+          {% for k in incident_kinds %}<option value="{{ k }}">{{ k.replace('_', ' ') }}</option>{% endfor %}</select></label>
+      <label class="min-w-[10rem] flex-1"><span class="label">on account</span>
+        <select name="account_id" class="input mt-1">
+          {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if a.name == 'Kestrel Sports' }}>{{ a.name }}</option>{% endfor %}</select></label>
+      <button class="btn-primary">Simulate incident now</button>
+    </form>
+    <p class="mt-1 text-xs text-slate-400">Appears immediately as a ⚡ alert on the owner's This Week and in the Slack preview; scored next Monday.</p>
+    <form method="post" action="/admin/simulate-salesforce" class="mt-4 text-sm">
+      <input type="hidden" name="next" value="/health#simulate">
+      <button class="btn-secondary" {{ 'disabled' if not working_tasks }}>Simulate a Salesforce update</button>
+      <span class="text-xs text-slate-400">Moves up to three open Salesforce Tasks on a step, as if the AMs had worked them in Salesforce (inbound sync).</span>
+    </form>
+  </section>
+
+  <section class="card card-pad">
+    <h2 class="section-title">Claude integration</h2>
+    <p class="mt-1 text-sm {{ 'text-emerald-700' if llm_status[0] else 'text-slate-500' }}">{{ 'On. ' if llm_status[0] else 'Off. ' }}{{ llm_status[1] }}</p>
+    {% if llm_calls %}
+      <table class="mt-3 w-full text-xs">
+        <thead class="text-left text-slate-500"><tr><th class="py-1 font-medium">When</th><th class="py-1 font-medium">Purpose</th><th class="py-1 font-medium">Prompt</th><th class="py-1 font-medium">Result</th></tr></thead>
+        <tbody>
+          {% for c in llm_calls %}<tr><td class="py-1">{{ c.created_at.strftime('%d %b %H:%M') }}</td><td class="py-1">{{ c.purpose }}</td><td class="py-1">{{ c.prompt_version }}</td>
+            <td class="py-1 {{ 'text-emerald-700' if c.status == 'used' else 'text-amber-800' }}">{{ c.status }}{% if c.violations %}: {{ c.violations | join('; ') }}{% endif %}</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    {% else %}<p class="mt-2 text-xs text-slate-400">No calls yet. Every call, and any guardrail rejection, is logged here.</p>{% endif %}
+  </section>
+</div>
+
+<section class="mt-6 card">
+  <h2 class="section-title px-5 pt-5">Recent runs</h2>
+  <div class="overflow-x-auto">
+    <table class="tbl mt-3">
+      <thead>
+        <tr><th class="px-4 py-2 font-medium">Started</th><th class="px-2 py-2 font-medium">Week</th><th class="px-2 py-2 font-medium">Status</th>
+            <th class="px-2 py-2 font-medium text-right">Duration</th><th class="px-2 py-2 font-medium text-right">Snapshots</th>
+            <th class="px-4 py-2 font-medium">Stale</th></tr>
+      </thead>
+      <tbody>
+        {% for r in runs %}
+          <tr>
+            <td class="px-4 py-2 whitespace-nowrap">{{ r.started_at.strftime('%d %b %H:%M:%S') }}</td>
+            <td class="px-2 py-2 whitespace-nowrap">{{ r.week_start | nice_date }}</td>
+            <td class="px-2 py-2">{{ r.status }}</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ ('%.0f ms' % ((r.finished_at - r.started_at).total_seconds() * 1000)) if r.finished_at else '–' }}</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ r.accounts_scored }}</td>
+            <td class="px-4 py-2 text-slate-500">{{ r.sources_stale | join(', ') or '–' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

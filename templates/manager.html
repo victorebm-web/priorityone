@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Manager · PriorityOne{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="page-title">{{ "Your team" if manager.id == user.id else manager.name ~ "'s team" }}</h1>
+    <p class="page-sub">Is urgent work getting handled, and where is the model wrong? Open 1:1 prep for a ready-made agenda.</p>
+  </div>
+  <form method="get" action="/manager" class="flex flex-wrap items-center gap-2 text-sm">
+    {% if managers %}
+      <label for="team" class="text-slate-500">Team</label>
+      <select id="team" name="team" onchange="this.form.submit()" class="input w-auto py-1">
+        {% for m in managers %}<option value="{{ m.id }}" {{ 'selected' if m.id == manager.id }}>{{ m.name }}</option>{% endfor %}
+      </select>
+    {% endif %}
+    <label for="week" class="text-slate-500 mr-1">Week</label>
+    <select id="week" name="week" onchange="this.form.submit()" class="input w-auto py-1">
+      {% for w in weeks %}
+        <option value="{{ w.isoformat() }}" {{ 'selected' if w == selected }}>{{ w | week_label }}{{ ' (current)' if loop.first and is_current }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+<section class="mt-6 card">
+  <h2 class="section-title px-5 pt-5">Act Now follow-through · {{ selected | week_label }}</h2>
+  {% if is_current %}<p class="px-4 text-xs text-slate-400">Current week: counts fill in as AMs act during the week.</p>{% endif %}
+  <div class="overflow-x-auto">
+    <table class="tbl mt-3">
+      <thead>
+        <tr><th class="px-4 py-2 font-medium">AM</th><th class="px-2 py-2 font-medium text-right">Act Now</th>
+            <th class="px-2 py-2 font-medium text-right">At risk</th><th class="px-2 py-2 font-medium text-right">Actioned</th>
+            <th class="px-2 py-2 font-medium text-right">Dismissed</th>
+            <th class="px-2 py-2 font-medium" title="Salesforce Tasks created from this week's list">Salesforce Tasks</th>
+            <th class="px-4 py-2 font-medium">No activity for 2 weeks running</th>
+            <th class="px-4 py-2 font-medium"><span class="sr-only">1:1</span></th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr class="align-top">
+            <td class="px-4 py-2 font-medium"><a href="/?user={{ r.am.id }}&week={{ selected.isoformat() }}" class="hover:underline">{{ r.am.name }}</a></td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ r.act_now }}</td>
+            <td class="px-2 py-2 text-right tabular-nums {{ 'text-red-800' if r.revenue_at_risk else 'text-slate-400' }}">{{ (r.revenue_at_risk | money) if r.revenue_at_risk else '–' }}</td>
+            <td class="px-2 py-2 text-right tabular-nums {{ 'text-emerald-700' if r.actioned }}">{{ r.actioned }}</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ r.dismissed }}</td>
+            <td class="px-2 py-2 text-xs">
+              <div class="tabular-nums text-slate-700">{{ r.task_done }}/{{ r.task_total }} done{% if r.sf.open %} · {{ r.sf.open }} open{% endif %}</div>
+              {% if r.waiting %}<span class="rounded bg-amber-50 px-1.5 text-[11px] text-amber-800">{{ r.waiting | length }} waiting</span>{% endif %}
+              {% if r.overdue %}<span class="rounded bg-red-50 px-1.5 text-[11px] text-red-800">{{ r.overdue | length }} overdue</span>{% endif %}
+              {% if r.escalations %}<span class="rounded bg-slate-100 px-1.5 text-[11px] text-slate-700">{{ r.escalations | length }} escalated</span>{% endif %}
+            </td>
+            <td class="px-4 py-2">
+              {% for i in r.idle %}
+                <a href="/account/{{ i.id }}?week={{ selected.isoformat() }}"
+                   class="mr-1 inline-flex items-center rounded-full bg-red-50 text-red-800 ring-1 ring-inset ring-red-200 px-2 py-0.5 text-xs hover:underline">
+                  {{ i.name }}{{ ' · still Act Now' if i.still_listed }}</a>
+              {% else %}
+                <span class="text-slate-400">{{ 'None' if r.has_history else 'Not enough history yet' }}</span>
+              {% endfor %}
+            </td>
+            <td class="px-4 py-2 text-right whitespace-nowrap"><a href="/manager/1on1/{{ r.am.id }}?week={{ selected.isoformat() }}" class="btn-secondary btn-sm">1:1 prep {{ icon.arrow("h-3.5 w-3.5") }}</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="border-t border-slate-200 font-medium">
+        <tr><td class="px-4 py-2">Team</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ team_totals.act_now }}</td>
+            <td class="px-2 py-2 text-right tabular-nums text-red-800">{{ team_risk | money }}</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ team_totals.actioned }}</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ team_totals.dismissed }}</td>
+            <td class="px-2 py-2 text-xs tabular-nums">{{ team_complete }}/{{ team_totals.task_total }} done{% if team_waiting %} · <span class="text-amber-800">{{ team_waiting }} waiting</span>{% endif %}{% if team_escalations %} · {{ team_escalations }} escalated{% endif %}</td>
+            <td></td><td></td></tr>
+      </tfoot>
+    </table>
+  </div>
+  <p class="px-4 pb-4 pt-2 text-xs text-slate-400">"Dismissed" includes accounts marked wrongly prioritised. "No activity" means Act Now in both of the two weeks before this one, with no feedback of any kind.</p>
+</section>
+
+<div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <section class="card card-pad">
+    <h2 class="section-title">Outcomes: does acting work?</h2>
+    <p class="text-xs text-slate-500">Problem signals that topped this team's lists in the last 7 weeks.</p>
+    <dl class="mt-3 grid grid-cols-3 gap-3 text-sm">
+      <div><dt class="text-xs text-slate-500">Cleared after action</dt><dd class="text-xl font-semibold tabular-nums">{{ outcome.actioned_cleared }}/{{ outcome.actioned }}</dd></div>
+      <div><dt class="text-xs text-slate-500">Without action</dt><dd class="text-xl font-semibold tabular-nums">{{ outcome.not_actioned_cleared }}/{{ outcome.not_actioned }}</dd></div>
+      <div><dt class="text-xs text-slate-500">Revenue recovered</dt><dd class="text-xl font-semibold tabular-nums">{{ outcome.revenue_recovered | money }}</dd></div>
+    </dl>
+    {% if outcome.saved %}
+      <ul class="mt-3 space-y-1 text-sm">
+        {% for i in outcome.saved[:4] %}<li><a href="/account/{{ i.account_id }}" class="hover:underline">{{ i.account }}</a>
+          <span class="text-xs text-slate-500">{{ i.signal_type.replace('_', ' ') }} cleared in {{ i.days_to_clear }} days</span></li>{% endfor %}
+      </ul>
+    {% endif %}
+    <p class="mt-2 text-[11px] text-slate-400">Not causal: demo data, and AMs choose what to act on.</p>
+  </section>
+  <section class="card card-pad">
+    <h2 class="section-title">Data-fix requests from this team</h2>
+    {% if fixes %}
+      <ul class="mt-2 divide-y divide-slate-100 text-sm">
+        {% for f in fixes %}
+          <li class="py-2"><span class="font-medium">{{ f.account.name }}</span> · {{ f.field_label }}
+            <span class="text-xs text-slate-500">→ {{ f.owner_team }}</span>
+            <span class="ml-1 rounded px-1.5 text-[11px] {{ 'bg-amber-50 text-amber-800' if f.status == 'open' else 'bg-emerald-50 text-emerald-800' }}">{{ f.status }}</span>
+            {% if f.suggested_value %}<div class="text-xs text-slate-500">Should be: {{ f.suggested_value }}</div>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% else %}<p class="mt-2 text-sm text-slate-500">None. When an AM says “the data is wrong”, the fix request lands here and with the field's owner.</p>{% endif %}
+  </section>
+</div>
+
+<section class="mt-6 card">
+  <div class="px-4 pt-4 flex flex-wrap items-baseline justify-between gap-2">
+    <h2 class="section-title">Wrongly prioritised: model accuracy signal</h2>
+    <span class="text-sm text-slate-500">{{ wrong_rows | length }} of {{ feedback_total }} feedback actions from this team · <a href="/calibration" class="underline">Calibrate weights</a></span>
+  </div>
+  {% if wrong_rows %}
+    <div class="px-4 mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+      <div><span class="text-slate-500">By reason:</span>
+        {% for code, n in by_reason %}<span class="ml-1 rounded bg-slate-100 px-1.5 py-0.5">{{ REASON_LABELS.get(code, code) }} <b>{{ n }}</b></span>{% endfor %}</div>
+      <div><span class="text-slate-500">By top signal:</span>
+        {% for sig, n in by_signal %}<span class="ml-1 rounded bg-slate-100 px-1.5 py-0.5">{{ sig.replace('_', ' ') }} <b>{{ n }}</b></span>{% endfor %}</div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="tbl mt-3">
+        <thead>
+          <tr><th class="px-4 py-2 font-medium">Week</th><th class="px-2 py-2 font-medium">AM</th><th class="px-2 py-2 font-medium">Account</th>
+              <th class="px-2 py-2 font-medium">Category</th><th class="px-2 py-2 font-medium">Top signal</th>
+              <th class="px-2 py-2 font-medium">Should be</th>
+              <th class="px-2 py-2 font-medium">Reason</th><th class="px-4 py-2 font-medium">Note</th></tr>
+        </thead>
+        <tbody>
+          {% for w in wrong_rows %}
+            <tr class="align-top">
+              <td class="px-4 py-2 whitespace-nowrap text-slate-500">{{ w.f.week_start | short_date }}</td>
+              <td class="px-2 py-2 whitespace-nowrap">{{ w.am }}</td>
+              <td class="px-2 py-2"><a href="/account/{{ w.f.account_id }}?week={{ w.f.week_start.isoformat() }}" class="hover:underline">{{ w.account }}</a></td>
+              <td class="px-2 py-2">{% if w.category %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs ring-1 ring-inset {{ CATEGORY_PILL[w.category] }}">{{ CATEGORY_LABELS[w.category] }}</span>{% endif %}</td>
+              <td class="px-2 py-2 text-slate-600">{{ (w.top_signal or '–').replace('_', ' ') }}</td>
+              <td class="px-2 py-2 whitespace-nowrap text-xs">{% if w.f.direction == 'escalate' %}<span class="text-red-800 font-medium">↑ higher</span>{% else %}<span class="text-slate-600">↓ lower</span>{% endif %}</td>
+              <td class="px-2 py-2"><span class="rounded bg-amber-50 text-amber-800 px-1.5 py-0.5 text-xs whitespace-nowrap">{{ REASON_LABELS.get(w.f.reason_code, w.f.reason_code) }}</span></td>
+              <td class="px-4 py-2 text-slate-500 italic">{{ w.f.note or '' }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="px-4 pb-4 pt-2 text-xs text-slate-400">"↑ higher" means the AM thinks the model under-rated the account. Feeds weight tuning: a signal type that keeps getting "signal is wrong" or "low actual impact" should be down-weighted or its threshold raised.</p>
+  {% else %}
+    <p class="px-4 py-4 text-sm text-slate-500">No wrongly prioritised feedback from this team yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

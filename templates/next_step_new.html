@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Plan next step · {{ a.name }} · PriorityOne{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-2xl">
+  <a href="{{ back }}" class="btn-ghost btn-sm -ml-2">{{ icon.back("h-3.5 w-3.5") }} Cancel</a>
+  <div class="mt-2 flex items-center gap-3">
+    <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800">{{ icon.arrow("h-5 w-5") }}</span>
+    <div>
+      <h1 class="page-title">Plan the next step</h1>
+      <p class="text-sm text-slate-500">Who, how and when. It's logged as an event on the contact in Salesforce.</p>
+    </div>
+  </div>
+
+  <form method="post" action="/next-steps" class="card mt-5 p-5 sm:p-6">
+    <input type="hidden" name="account_id" value="{{ a.id }}"><input type="hidden" name="next" value="{{ back }}">
+    {% if signal %}<input type="hidden" name="signal_id" value="{{ signal.id }}">{% endif %}
+
+    <dl class="grid gap-x-6 gap-y-3 border-b border-slate-100 pb-5 text-sm sm:grid-cols-2">
+      <div><dt class="label">Account</dt><dd class="mt-0.5 font-medium">{{ a.name }} <span class="font-normal text-slate-500">· {{ a.segment }} · {{ a.arr_usd | money }} ARR</span></dd></div>
+      <div><dt class="label">Because</dt><dd class="mt-0.5 text-slate-800">{{ signal.summary if signal else "Keeping the relationship warm" }}</dd></div>
+    </dl>
+
+    <div class="mt-5 space-y-5">
+      <label class="block"><span class="label">Next step</span>
+        <input name="title" required maxlength="200" value="{{ title }}" class="input mt-1" autocomplete="off"></label>
+
+      <fieldset>
+        <legend class="label">How</legend>
+        <div class="mt-1.5 flex flex-wrap gap-2">
+          {% for k, label in kinds.items() %}
+            <label class="cc-chip px-3.5 py-1.5 text-sm"><input type="radio" name="kind" value="{{ k }}" class="sr-only" {{ 'checked' if k == kind }} autocomplete="off">{{ label }}</label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <label class="block"><span class="label">With</span>
+        <select name="contact_id" id="ns-contact" class="input mt-1" autocomplete="off">
+          {% for c in contacts %}<option value="{{ c.id }}" {{ 'selected' if contact and c.id == contact.id }}>{{ c.name }} · {{ c.title }}{{ ' (suggested)' if contact and c.id == contact.id }}</option>{% endfor %}
+          <option value="">No specific contact</option>
+        </select>
+        {% if contact and contact.why %}<span class="mt-1 block text-[12px] text-slate-500">Suggested because: {{ contact.why[:2] | join(' · ') }}</span>{% endif %}
+      </label>
+
+      <div class="grid gap-4 sm:grid-cols-3">
+        <label class="block"><span class="label">Date</span>
+          <input type="date" name="on_date" required value="{{ when.isoformat() }}" min="{{ today_d.isoformat() }}" class="input mt-1" autocomplete="off"></label>
+        <label class="block"><span class="label">Time</span>
+          <input type="time" name="at_time" required value="10:00" step="900" class="input mt-1" autocomplete="off"></label>
+        <label class="block"><span class="label">Duration</span>
+          <select name="duration_min" class="input mt-1" autocomplete="off">
+            {% for m in [15, 30, 45, 60] %}<option value="{{ m }}" {{ 'selected' if m == 30 }}>{{ m }} min</option>{% endfor %}
+          </select></label>
+      </div>
+      <p class="-mt-2 text-[12px] text-slate-400">Suggested: the next working day for urgent accounts, two working days otherwise.</p>
+
+      <label class="block"><span class="label">Agenda</span>
+        <textarea name="agenda" rows="10" maxlength="4000" class="input mt-1 text-[13px] leading-relaxed" autocomplete="off">{{ agenda }}</textarea></label>
+    </div>
+
+    <div class="mt-6 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-5">
+      <button class="btn-sf">{{ icon.check() }} Plan in Salesforce</button>
+      {% if contact %}<a href="/account/{{ a.id }}?compose={{ contact.id }}#messages" class="btn-secondary">{{ icon.send() }} Write the email instead</a>{% endif %}
+      <a href="{{ back }}" class="btn-ghost">Cancel</a>
+    </div>
+    <p class="mt-3 text-[12px] text-slate-400">Logged as a Salesforce event on the contact (simulated). Counts as handling the account this week. Nothing is sent to the customer.</p>
+  </form>
+</div>
+{% endblock %}

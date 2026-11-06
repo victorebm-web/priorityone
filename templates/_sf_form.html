@@ -1,0 +1,20 @@
+{# Create-a-Salesforce-Task form, pre-filled from a flagged reason.
+   Expects: acct_id, sig_id, pre (subject, description, due_date, priority), cat, back (redirect URL). #}
+<form method="post" action="/salesforce/tasks" class="space-y-2 text-sm">
+  <input type="hidden" name="account_id" value="{{ acct_id }}"><input type="hidden" name="signal_id" value="{{ sig_id }}">
+  <input type="hidden" name="category" value="{{ cat or '' }}"><input type="hidden" name="next" value="{{ back }}">
+  <label class="block"><span class="label">Subject</span>
+    <input name="subject" required maxlength="255" value="{{ pre.subject }}" class="input mt-1"></label>
+  <div class="flex gap-2">
+    <label class="flex-1"><span class="label">Due date</span>
+      <input type="date" name="due_date" required value="{{ pre.due_date.isoformat() }}" min="{{ today.isoformat() if today is defined else '' }}" class="input mt-1"></label>
+    <label><span class="label">Priority</span>
+      <select name="priority" class="input mt-1 w-auto">
+        {% for pr in ["High", "Normal", "Low"] %}<option {{ 'selected' if pr == pre.priority }}>{{ pr }}</option>{% endfor %}
+      </select></label>
+  </div>
+  <label class="block"><span class="label">Comments</span>
+    <textarea name="description" rows="4" maxlength="4000" class="input mt-1 text-xs">{{ pre.description }}</textarea></label>
+  <p class="text-[11px] text-slate-400">Creates a Task on the account in Salesforce (simulated), assigned to you. Its status syncs back here.</p>
+  <button class="btn-sf w-full">Create in Salesforce</button>
+</form>

@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Scorecard · PriorityOne{% endblock %}
+{% block content %}
+{% set max_w = signals | map(attribute=1) | max %}
+<div class="mx-auto max-w-4xl">
+  <h1 class="page-title">How PriorityOne ranks your accounts</h1>
+  <p class="page-sub">Every Monday each account gets a score from the data. The highest scores make your list of {{ sc.MAX_WEEKLY_ITEMS }}. Nothing is a black box: here's the whole scorecard.</p>
+
+  {# The idea in three steps #}
+  <ol class="mt-6 grid gap-3 sm:grid-cols-3">
+    {% for n, title, text in [
+      (1, "Spot signals", "Every Monday we check payments, Salesforce, Gong, Support and survey data for problems and opportunities."),
+      (2, "Score each account", "Bigger accounts with fresher, more serious problems score higher."),
+      (3, "Build your list", "Your top " ~ sc.MAX_WEEKLY_ITEMS ~ " scores, urgent ones first. Housekeeping, like overdue QBRs, is kept off it.")] %}
+      <li class="card card-pad">
+        <span class="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900 text-[13px] font-semibold text-white">{{ n }}</span>
+        <h2 class="section-title mt-3">{{ title }}</h2>
+        <p class="mt-1 text-sm text-slate-600">{{ text }}</p>
+      </li>
+    {% endfor %}
+  </ol>
+
+  {# The formula, in words #}
+  <section class="card card-pad mt-4">
+    <h2 class="section-title">How the score works</h2>
+    <p class="mt-3 rounded-lg bg-slate-50 px-4 py-3 text-center text-[16px] font-medium leading-snug tracking-tight">
+      Score = <span class="text-blue-700">how much the account matters</span> × <span class="text-red-800">how urgent its signals are</span>
+    </p>
+    <div class="mt-5 grid gap-6 sm:grid-cols-2">
+      <div>
+        <h3 class="font-semibold text-blue-700">How much the account matters</h3>
+        <p class="mt-1 text-sm text-slate-600">Bigger accounts count more, so the same problem ranks higher on a big customer.</p>
+        <dl class="mt-3 space-y-3 text-sm">
+          <div>
+            <dt class="font-medium text-slate-800">Segment</dt>
+            <dd class="mt-1 flex flex-wrap gap-1.5">{% for seg, m in sc.SEGMENT_MULTIPLIERS.items() %}<span class="chip bg-white text-slate-700 ring-slate-200">{{ seg }} ×{{ m }}</span>{% endfor %}</dd>
+          </div>
+          <div>
+            <dt class="font-medium text-slate-800">Size</dt>
+            <dd class="mt-0.5 text-slate-600">More ARR adds weight on a sliding scale: a $10M account counts more than a $1M one, without drowning out everyone else.</dd>
+            <dd class="mt-1 flex flex-wrap gap-1.5"><span class="chip bg-white text-slate-700 ring-slate-200">from {{ sc.ARR_NORM_MIN_USD | money }}</span><span class="chip bg-white text-slate-700 ring-slate-200">to {{ sc.ARR_NORM_MAX_USD | money }}</span></dd>
+          </div>
+          <div>
+            <dt class="font-medium text-slate-800">New customers</dt>
+            <dd class="mt-0.5 text-slate-600">A little extra weight in the first year, when customers are most likely to leave.</dd>
+            <dd class="mt-1"><span class="chip bg-white text-slate-700 ring-slate-200">First year ×{{ sc.FIRST_YEAR_FACTOR }}</span></dd>
+          </div>
+          <p class="text-[13px] text-slate-400">Never more than ×{{ sc.IMPORTANCE_CAP }} in total.</p>
+        </dl>
+      </div>
+      <div>
+        <h3 class="font-semibold text-red-800">How urgent its signals are</h3>
+        <p class="mt-1 text-sm text-slate-600">Every live signal adds points: its weight (in the table below), times how serious it is, times how fresh it is.</p>
+        <dl class="mt-3 space-y-3 text-sm">
+          <div>
+            <dt class="font-medium text-slate-800">How serious</dt>
+            <dd class="mt-1 flex flex-wrap gap-1.5">
+              <span class="chip bg-slate-50 text-slate-600 ring-slate-200">Mild ×{{ sc.SEVERITY_MULTIPLIERS.low }}</span>
+              <span class="chip bg-amber-50 text-amber-800 ring-amber-200">Moderate ×{{ sc.SEVERITY_MULTIPLIERS.medium }}</span>
+              <span class="chip bg-red-50 text-red-800 ring-red-200">Severe ×{{ sc.SEVERITY_MULTIPLIERS.high }}</span>
+            </dd>
+          </div>
+          <div>
+            <dt class="font-medium text-slate-800">How fresh</dt>
+            <dd class="mt-0.5 text-slate-600">A new signal counts in full. It counts half as much every {{ sc.DECAY_HALF_LIFE_DAYS // 7 }} weeks, and stops counting after {{ sc.MAX_SIGNAL_AGE_DAYS }} days.</dd>
+            <dd class="mt-1 flex flex-wrap gap-1.5">
+              <span class="chip bg-white text-slate-700 ring-slate-200">New: 100%</span><span class="chip bg-white text-slate-700 ring-slate-200">{{ sc.DECAY_HALF_LIFE_DAYS // 7 }} weeks: 50%</span>
+              <span class="chip bg-white text-slate-700 ring-slate-200">{{ 2 * sc.DECAY_HALF_LIFE_DAYS // 7 }} weeks: 25%</span><span class="chip bg-white text-slate-700 ring-slate-200">{{ sc.MAX_SIGNAL_AGE_DAYS }}+ days: 0%</span>
+            </dd>
+          </div>
+          <div>
+            <dt class="font-medium text-slate-800">One cause, counted once</dt>
+            <dd class="mt-0.5 text-slate-600">If one problem sets off several signals (say, a sev-1 that also hurts the authorisation rate), the biggest counts in full and the rest at {{ (sc.RELATED_SIGNAL_FACTOR * 100) | int }}%.</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  {# Signal scorecard #}
+  <section class="card mt-4">
+    <div class="px-5 pt-5">
+      <h2 class="section-title">The signals and their weights</h2>
+      <p class="mt-0.5 text-[13px] text-slate-500">Each signal says what it means and when it starts to count. <b class="font-medium text-slate-600">Mild, Moderate and Severe</b> are how serious it is: severe counts {{ sc.SEVERITY_MULTIPLIERS.high }}× as much as moderate, mild {{ sc.SEVERITY_MULTIPLIERS.low }}×. A higher weight pushes an account up the list faster.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="tbl mt-3">
+        <thead><tr><th class="px-5">Signal</th><th>What it means</th><th>Source</th><th class="w-40">Weight</th></tr></thead>
+        <tbody>
+          {% for t, w, cat, override in signals %}
+            {% if loop.first or loop.previtem[2] != cat %}
+              <tr><td colspan="4" class="bg-slate-50/70 px-5 py-1.5 text-[12px] font-semibold {{ 'text-red-800' if cat == 'act_now' else 'text-amber-800' }}">
+                {{ {'act_now': 'Needs attention (Act Now)', 'opportunity': 'Opportunity', 'maintain': 'Housekeeping (kept off the list)'}[cat] }}</td></tr>
+            {% endif %}
+            {% set label, meaning, levels, source = details[t] %}
+            <tr class="align-top">
+              <td class="px-5 py-2.5 font-medium">{{ label }}</td>
+              <td class="py-2.5">
+                <p class="text-slate-700">{{ meaning }}</p>
+                <div class="mt-1.5 flex flex-wrap gap-1.5">
+                  {% for sev, threshold in levels %}
+                    <span class="chip {{ {'low': 'bg-slate-50 text-slate-600 ring-slate-200', 'medium': 'bg-amber-50 text-amber-800 ring-amber-200', 'high': 'bg-red-50 text-red-800 ring-red-200'}[sev] }}">{{ level_words[sev] }}: {{ threshold }}</span>
+                  {% endfor %}
+                </div>
+              </td>
+              <td class="whitespace-nowrap py-2.5 text-slate-500">{{ source }}</td>
+              <td class="py-2.5">
+                {% set eff = override or w %}
+                <div class="flex items-center gap-2">
+                  <div class="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full {{ 'bg-red-700' if cat == 'act_now' else 'bg-amber-300' }}" style="width: {{ (100 * eff / max_w) | round | int }}%"></div></div>
+                  <span class="tabular-nums">{{ '%.0f' % eff }}</span>
+                  {% if override %}<span class="text-[11px] text-slate-400" title="Base weight {{ w }}, changed in Calibration">(was {{ w }})</span>{% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {# What the colours mean #}
+  <section class="card card-pad mt-4">
+    <h2 class="section-title">What the colours on "Your book" mean</h2>
+    <ul class="mt-3 space-y-2.5 text-sm">
+      <li class="flex gap-3"><span class="mt-1 h-3 w-3 shrink-0 rounded-sm bg-red-700"></span><span><b>Needs attention.</b> An urgent signal is live and you haven't handled it this week. Includes urgent accounts that didn't fit in your {{ sc.MAX_WEEKLY_ITEMS }}.</span></li>
+      <li class="flex gap-3"><span class="mt-1 h-3 w-3 shrink-0 rounded-sm bg-amber-300"></span><span><b>Worth a look.</b> An opportunity, or housekeeping such as an overdue QBR or an account that has gone quiet.</span></li>
+      <li class="flex gap-3"><span class="mt-1 h-3 w-3 shrink-0 rounded-sm bg-emerald-500"></span><span><b>On track.</b> Nothing open, or you've already handled it or set it aside this week.</span></li>
+    </ul>
+    <p class="mt-3 text-[13px] text-slate-500">Within each colour, the book is ordered by what's at stake: revenue run rate × the signal's weight.
+      Setting an account aside drops its score to {{ (sc.SUPPRESSION_FACTOR * 100) | int }}% for {{ sc.SUPPRESSION_LOOKBACK_WEEKS }} weeks; it comes back early if it gets more than {{ (sc.RESURFACE_THRESHOLD * 100) | int }}% worse.</p>
+  </section>
+
+  {# Worked example #}
+  {% if example %}
+    {% set a = example_account %}
+    <section class="card card-pad mt-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 class="section-title">Worked example: <a href="/account/{{ a.id }}" class="hover:underline">{{ a.name }}</a></h2>
+        <span class="text-[13px] text-slate-500">#{{ example.rank }} this week · {{ a.segment }} · {{ a.arr_usd | money }} ARR</span>
+      </div>
+      <div class="mt-3 overflow-x-auto">
+        <table class="tbl">
+          <thead><tr><th>Signal</th><th class="text-right">Weight</th><th class="text-right">× Severity</th><th class="text-right">× Freshness</th><th class="text-right">= Points</th></tr></thead>
+          <tbody>
+            {% for r in ex_rows %}
+              <tr>
+                <td>{{ r.label }}<div class="text-[12px] text-slate-500">{{ r.sentence }}{% if r.related_to %} · counted at {{ (sc.RELATED_SIGNAL_FACTOR * 100) | int }}%, same cause as {{ r.related_to.replace('_', ' ') }}{% endif %}</div></td>
+                <td class="text-right tabular-nums">{{ '%.0f' % r.base }}</td>
+                <td class="text-right tabular-nums">{{ r.sev }} <span class="text-[11px] text-slate-400">{{ r.severity }}</span></td>
+                <td class="text-right tabular-nums">{{ '%.2f' % r.decay }} <span class="text-[11px] text-slate-400">{{ r.age_days }}d old</span></td>
+                <td class="text-right font-medium tabular-nums">{{ '%.1f' % r.points }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot class="border-t border-slate-200 font-medium">
+            <tr><td colspan="4">Urgency</td><td class="text-right tabular-nums text-red-800">{{ '%.1f' % example.urgency_score }}</td></tr>
+            <tr><td colspan="4">× Importance <span class="font-normal text-slate-500">({{ a.segment }}, {{ a.arr_usd | money }} ARR)</span></td><td class="text-right tabular-nums text-blue-700">{{ '%.2f' % example.importance }}</td></tr>
+            <tr><td colspan="4">= Score</td><td class="text-right text-[15px] tabular-nums">{{ '%.1f' % example.raw_score }}</td></tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="mt-2 text-[12px] text-slate-400">Only the top {{ sc.MAX_REASONS }} signals show on the list; every signal counts in the score. Points are rounded.</p>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

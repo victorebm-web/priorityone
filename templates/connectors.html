@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Connectors · PriorityOne{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="page-title">Connectors</h1>
+    <p class="page-sub">The GTM tools and internal data PriorityOne reads from. Read-only, except creating Tasks in Salesforce. PriorityOne never sends messages.</p>
+  </div>
+  <div class="flex flex-wrap gap-2 text-sm">
+    <span class="rounded-full bg-emerald-50 px-3 py-1 text-emerald-800 ring-1 ring-inset ring-emerald-200">{{ summary.connected }} connected</span>
+    {% if summary.attention %}<span class="rounded-full bg-amber-50 px-3 py-1 text-amber-800 ring-1 ring-inset ring-amber-300">{{ summary.attention }} needs attention</span>{% endif %}
+    <span class="rounded-full bg-slate-100 px-3 py-1 text-slate-700 ring-1 ring-inset ring-slate-200">{{ summary.available }} available</span>
+  </div>
+</div>
+
+<div class="mt-4 rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+  <b class="text-slate-900">Demo:</b> connections are simulated. The status of the five sources marked <i>Used in scoring</i> is real: it comes
+  from the ingestion log, the same one <a href="/health" class="underline">Health</a> uses. In production each connector would also be
+  exposed to Claude over MCP, so drafting and call extraction read the same data, under the same permissions, as the scoring job.
+</div>
+
+<div class="mt-5 flex flex-wrap items-center gap-2 text-sm">
+  <label for="search" class="sr-only">Search connectors</label>
+  <input id="search" type="search" placeholder="Search connectors" class="input sm:w-64">
+  <div class="flex flex-wrap gap-1" role="group" aria-label="Filter by category">
+    <button type="button" data-cat="" class="cat-btn rounded-full border px-3 py-1">All</button>
+    {% for c in categories %}<button type="button" data-cat="{{ c }}" class="cat-btn rounded-full border px-3 py-1">{{ c }}</button>{% endfor %}
+  </div>
+</div>
+
+{% set status_pill = {
+  "connected": ("Connected", "bg-emerald-50 text-emerald-800 ring-emerald-200"),
+  "attention": ("Needs attention", "bg-amber-50 text-amber-800 ring-amber-300"),
+  "available": ("Not connected", "bg-slate-100 text-slate-600 ring-slate-200")} %}
+
+<div class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" id="grid">
+  {% for c in items %}
+    <article class="connector flex flex-col rounded-lg border bg-white p-4 {{ 'border-amber-300' if c.status == 'attention' else 'border-slate-200' }}"
+             data-name="{{ (c.name ~ ' ' ~ c.category ~ ' ' ~ c.summary) | lower }}" data-cat="{{ c.category }}">
+      <div class="flex items-start gap-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-900 text-sm font-semibold text-white" aria-hidden="true">{{ c.initials }}</div>
+        <div class="min-w-0 flex-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="section-title">{{ c.name }}</h2>
+            {% if c.live %}<span class="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">Used in scoring</span>{% endif %}
+          </div>
+          <div class="text-xs text-slate-500">{{ c.category }}</div>
+        </div>
+        <span class="shrink-0 rounded-full px-2 py-0.5 text-xs ring-1 ring-inset {{ status_pill[c.status][1] }}">{{ status_pill[c.status][0] }}</span>
+      </div>
+      <p class="mt-3 text-sm text-slate-700">{{ c.summary }}</p>
+      {% if c.feeds %}
+        <div class="mt-2 flex flex-wrap gap-1">
+          {% for f in c.feeds %}<span class="rounded bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 ring-1 ring-inset ring-slate-200">{{ f.replace('_', ' ') }}</span>{% endfor %}
+        </div>
+      {% endif %}
+      <div class="mt-auto pt-4 flex items-center justify-between text-xs text-slate-500">
+        <span>
+          {% if c.status == 'available' %}Not connected
+          {% elif c.status == 'attention' %}<span class="text-amber-800">Last sync {{ c.last_sync | short_date }} ({{ c.lag_days }}d ago)</span>
+          {% else %}Last sync {{ c.last_sync | short_date }}{% endif %}
+        </span>
+        <button type="button" data-open="dlg-{{ c.key }}"
+                class="{{ 'btn-primary text-xs' if c.status != 'connected' else 'btn-secondary btn-sm' }}">
+          {{ 'Connect' if c.status == 'available' else ('Reconnect' if c.status == 'attention' else 'Manage') }}</button>
+      </div>
+    </article>
+
+    <dialog id="dlg-{{ c.key }}" class="w-[min(40rem,calc(100vw-2rem))] rounded-lg border border-slate-200 p-0 shadow-xl backdrop:bg-slate-900/30">
+      <div class="p-5">
+        <div class="flex items-start gap-3">
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-slate-900 text-sm font-semibold text-white" aria-hidden="true">{{ c.initials }}</div>
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold">{{ c.name }}</h3>
+            <div class="text-xs text-slate-500">{{ c.category }} · <span class="rounded-full px-2 py-0.5 ring-1 ring-inset {{ status_pill[c.status][1] }}">{{ status_pill[c.status][0] }}</span></div>
+          </div>
+          <form method="dialog"><button class="rounded p-1 text-slate-400 hover:text-slate-900" aria-label="Close">✕</button></form>
+        </div>
+        <p class="mt-3 text-sm text-slate-700">{{ c.summary }}</p>
+        {% if c.issue and c.status == 'attention' %}<p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">⚠ {{ c.issue }}</p>{% endif %}
+        {% if c.note %}<p class="mt-3 text-sm text-slate-500">{{ c.note }}</p>{% endif %}
+        {% if c.idea %}<p class="mt-3 rounded-md bg-slate-50 px-3 py-2 text-sm"><b>Why connect it:</b> {{ c.idea }}</p>{% endif %}
+
+        {% if c.status != 'available' %}
+          <dl class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            <div><dt class="eyebrow">Authentication</dt><dd>{{ c.auth }}</dd></div>
+            <div><dt class="eyebrow">Sync schedule</dt><dd>{{ c.schedule }}</dd></div>
+            <div><dt class="eyebrow">Permissions</dt><dd class="font-mono text-xs">{{ c.scopes | join(', ') }}</dd></div>
+            <div><dt class="eyebrow">Last successful sync</dt><dd>{{ c.last_sync | nice_date }}</dd></div>
+            {% if c.records is not none and c.records is defined %}<div><dt class="eyebrow">Records held</dt><dd>{{ '{:,}'.format(c.records) }}</dd></div>{% endif %}
+            {% if c.live %}<div><dt class="eyebrow">Signal events produced</dt><dd>{{ c.signal_events }}</dd></div>{% endif %}
+          </dl>
+          <h4 class="eyebrow mt-4">Objects read</h4>
+          <div class="mt-1 flex flex-wrap gap-1">{% for o in c.objects %}<span class="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{{ o }}</span>{% endfor %}</div>
+          {% if c.mapping %}
+            <h4 class="eyebrow mt-4">Field mapping</h4>
+            <table class="mt-1 w-full text-xs">
+              <tbody>
+                {% for src, dst in c.mapping %}<tr><td class="py-1 pr-3 font-mono text-slate-700">{{ src }}</td><td class="py-1 text-slate-400">→</td><td class="py-1 pl-3 font-mono text-slate-600">{{ dst }}</td></tr>{% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
+        {% endif %}
+
+        <div class="mt-5 flex flex-wrap items-center justify-end gap-2 text-sm">
+          <span class="mr-auto text-xs text-slate-400">Demo only: buttons are inactive.</span>
+          {% if c.status == 'available' %}
+            <button disabled class="btn-primary" title="In production this starts the {{ c.name }} authorisation flow">Connect {{ c.name }}</button>
+          {% else %}
+            <button disabled class="btn-secondary btn-sm">Disconnect</button>
+            <button disabled class="btn-primary">{{ 'Reconnect' if c.status == 'attention' else 'Sync now' }}</button>
+          {% endif %}
+        </div>
+      </div>
+    </dialog>
+  {% endfor %}
+</div>
+<p id="no-results" class="mt-6 hidden text-center text-sm text-slate-500">No connectors match.</p>
+
+<script>
+  let cat = "";
+  const on = "bg-slate-900 text-white border-slate-900", off = "bg-white text-slate-700 border-slate-300 hover:bg-slate-50";
+  function filter() {
+    const q = document.getElementById("search").value.trim().toLowerCase();
+    let shown = 0;
+    document.querySelectorAll(".connector").forEach(card => {
+      const ok = (!cat || card.dataset.cat === cat) && (!q || card.dataset.name.includes(q));
+      card.classList.toggle("hidden", !ok); shown += ok;
+    });
+    document.getElementById("no-results").classList.toggle("hidden", shown > 0);
+    document.querySelectorAll(".cat-btn").forEach(b => b.className = `cat-btn rounded-full border px-3 py-1 ${b.dataset.cat === cat ? on : off}`);
+  }
+  document.getElementById("search").addEventListener("input", filter);
+  document.querySelectorAll(".cat-btn").forEach(b => b.addEventListener("click", () => { cat = b.dataset.cat; filter(); }));
+  document.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => document.getElementById(b.dataset.open).showModal()));
+  filter();
+</script>
+{% endblock %}

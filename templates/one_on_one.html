@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}1:1 · {{ am.name }} · PriorityOne{% endblock %}
+{% block content %}
+<a href="/manager?week={{ selected.isoformat() }}" class="btn-ghost btn-sm -ml-2">← Back to the team</a>
+<div class="mt-3 flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="page-title">1:1 with {{ am.name }}</h1>
+    <p class="page-sub">An agenda built from {{ am.name.split()[0] }}'s week. Start at the top.</p>
+  </div>
+  <form method="get" class="text-sm">
+    <label for="week" class="text-slate-500 mr-1">Week</label>
+    <select id="week" name="week" onchange="this.form.submit()" class="input w-auto py-1">
+      {% for w in weeks %}<option value="{{ w.isoformat() }}" {{ 'selected' if w == selected }}>{{ w | week_label }}{{ ' (current)' if loop.first and is_current }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+
+<div class="mt-5 grid grid-cols-2 md:grid-cols-5 gap-3">
+  {% macro tile(label, value, sub=None, tone="") %}
+    <div class="kpi {{ tone }}">
+      <div class="kpi-label">{{ label }}</div>
+      <div class="kpi-value">{{ value }}</div>
+      {% if sub %}<div class="kpi-sub">{{ sub }}</div>{% endif %}
+    </div>
+  {% endmacro %}
+  {{ tile("Act Now", sm.act_now, sm.act_now_arr | money ~ " ARR") }}
+  {{ tile("Salesforce Tasks", sm.task_done ~ "/" ~ sm.task_total, "done, from this week's list") }}
+  {{ tile("Waiting / overdue", (sm.waiting | length) ~ " / " ~ (sm.overdue | length), "needs help" if sm.waiting or sm.overdue else "none", "border-amber-300 bg-amber-50" if sm.waiting or sm.overdue else "border-slate-200") }}
+  {{ tile("Escalations", escalations | length, "this week") }}
+  {{ tile("Untouched 2 wks", sm.idle | length, "Act Now accounts", "border-amber-300 bg-amber-50" if sm.idle else "border-slate-200") }}
+</div>
+
+<div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <section class="lg:col-span-2 card card-pad">
+    <h2 class="section-title">Talking points</h2>
+    {% set tone_style = {"risk": ("bg-red-700", "Needs attention"), "watch": ("bg-amber-500", "Check in"),
+                         "model": ("bg-blue-500", "Model feedback"), "win": ("bg-emerald-600", "Win")} %}
+    {% if points %}
+      <ol class="mt-3 space-y-2">
+        {% for tone, text, link in points %}
+          <li class="flex items-start gap-3 rounded-md px-2 py-1.5 hover:bg-slate-50">
+            <span class="mt-0.5 w-5 shrink-0 text-right text-sm text-slate-400 tabular-nums">{{ loop.index }}.</span>
+            <span class="mt-2 h-2 w-2 shrink-0 rounded-full {{ tone_style[tone][0] }}" title="{{ tone_style[tone][1] }}"></span>
+            <a href="{{ link }}" class="text-sm text-slate-800 hover:underline">{{ text }}</a>
+          </li>
+        {% endfor %}
+      </ol>
+      <div class="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
+        {% for k, v in tone_style.items() %}<span class="inline-flex items-center gap-1"><span class="h-2 w-2 rounded-full {{ v[0] }}"></span>{{ v[1] }}</span>{% endfor %}
+      </div>
+    {% else %}
+      <p class="mt-2 text-sm text-slate-500">Nothing stands out this week. A good week to talk about pipeline and development.</p>
+    {% endif %}
+  </section>
+
+  <div class="space-y-6">
+    <section class="card card-pad">
+      <h2 class="section-title">Salesforce Tasks created and completed</h2>
+      {% set max_total = (trend | map(attribute='created') | max) or 1 %}
+      <div class="mt-3 flex items-end gap-2 h-24">
+        {% for wk in trend %}
+          <div class="flex flex-col items-center gap-1" title="{{ wk.week | week_label }}: {{ wk.created }} created, {{ wk.completed }} completed">
+            <div class="flex w-7 flex-col-reverse overflow-hidden rounded-sm {{ 'ring-2 ring-slate-900 ring-offset-1' if wk.week == selected }}"
+                 style="height: {{ (4 + 76 * wk.created / max_total) | round | int }}px">
+              {% if wk.created %}
+                <div class="bg-emerald-600" style="height: {{ 100 * wk.completed / wk.created }}%"></div>
+                <div class="bg-slate-300" style="height: {{ 100 - 100 * wk.completed / wk.created }}%"></div>
+              {% else %}<div class="h-full bg-slate-100"></div>{% endif %}
+            </div>
+            <span class="text-[10px] text-slate-500">{{ wk.week | short_date }}</span>
+          </div>
+        {% endfor %}
+      </div>
+      <p class="mt-2 text-[11px] text-slate-400">Green: completed in Salesforce. Grey: still open.</p>
+    </section>
+
+    <section class="card card-pad">
+      <h2 class="section-title">Focus list this week</h2>
+      <ul class="mt-2 space-y-1.5 text-sm">
+        {% for p in sm.shown %}
+          {% set fb = sm.feedback.get(p.account_id) %}
+          <li class="flex items-center gap-2">
+            <span class="inline-flex rounded-full px-1.5 py-0.5 text-[11px] ring-1 ring-inset {{ CATEGORY_PILL[p.category] }}">{{ CATEGORY_LABELS[p.category] }}</span>
+            <a href="/account/{{ p.account_id }}?week={{ selected.isoformat() }}" class="truncate hover:underline">{{ names[p.account_id] }}</a>
+            <span class="ml-auto shrink-0 text-xs {{ 'text-emerald-700' if fb and fb.action == 'acted' else 'text-slate-400' }}">{{ ACTION_LABELS[fb.action] | replace('Marked ', '') if fb else 'no activity' }}</span>
+          </li>
+        {% else %}
+          <li class="text-slate-500">Nothing on the list.</li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="card card-pad">
+      <h2 class="section-title">Recent activity</h2>
+      <ol class="mt-2 space-y-2 text-sm">
+        {% for e in escalations %}
+          <li><span class="text-xs text-slate-400">{{ e.created_at.strftime('%d %b %H:%M') }}</span>
+            <a href="/account/{{ e.account_id }}#messages" class="block hover:underline">{{ e.account.name }}: escalated to {{ ESCALATION_LABELS.get(e.target, e.target) }} via {{ ESCALATION_LABELS.get(e.channel, e.channel) }}</a></li>
+        {% endfor %}
+        {% for e in recent %}
+          {% set t = task_by_id[e.task_id] %}
+          <li><span class="text-xs text-slate-400">{{ e.created_at.strftime('%d %b %H:%M') }}</span>
+            <a href="/account/{{ t.account_id }}#sf-tasks" class="block hover:underline">
+              {{ t.account.name }}:
+              {% if e.kind == 'created' %}Salesforce Task created{% else %}Task set to {{ SF_STATUS_LABELS.get(e.to_value, e.to_value) | lower }} in Salesforce{% endif %}
+            </a></li>
+        {% else %}
+          {% if not escalations %}<li class="text-slate-500">No activity this week.</li>{% endif %}
+        {% endfor %}
+      </ol>
+    </section>
+  </div>
+</div>
+{% endblock %}

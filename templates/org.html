@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Org · PriorityOne{% endblock %}
+{% block content %}
+<h1 class="page-title">Org overview</h1>
+<p class="page-sub">{{ current_week | week_label }}. Where the money is at risk, whether teams are acting on it, and whether acting works.</p>
+
+<div class="mt-5 grid grid-cols-2 lg:grid-cols-5 gap-3">
+  {% macro tile(label, value, sub=None, tone="") %}
+    <div class="kpi {{ tone }}">
+      <div class="kpi-label">{{ label }}</div>
+      <div class="kpi-value">{{ value }}</div>
+      {% if sub %}<div class="kpi-sub">{{ sub }}</div>{% endif %}
+    </div>
+  {% endmacro %}
+  {{ tile("Revenue at risk", total_risk | money, "annualised, Act Now this week", "border-red-200") }}
+  {{ tile("Renewals ≤ 90 days", renewals | length, renewal_arr | money ~ " ARR, " ~ (renewals | selectattr('id', 'in', at_risk_ids) | list | length) ~ " with problems") }}
+  {{ tile("Act Now actioned", (teams | sum(attribute='actioned')) ~ "/" ~ (teams | sum(attribute='act_now')), "this week so far") }}
+  {{ tile("Cleared after action", (outcome.actioned_cleared ~ "/" ~ outcome.actioned), ("median " ~ outcome.median_days ~ " days") if outcome.median_days is not none else "no data yet") }}
+  {{ tile("Revenue recovered", outcome.revenue_recovered | money, "last " ~ weeks | length ~ " weeks, demo data") }}
+</div>
+
+<section class="mt-6 card">
+  <h2 class="section-title px-5 pt-5">By team</h2>
+  <div class="overflow-x-auto">
+    <table class="tbl mt-3">
+      <thead>
+        <tr><th class="px-4 py-2 font-medium">Team</th><th class="px-2 py-2 font-medium text-right">AMs</th>
+            <th class="px-2 py-2 font-medium text-right">Revenue at risk</th><th class="px-2 py-2 font-medium text-right">Act Now actioned</th>
+            <th class="px-2 py-2 font-medium text-right" title="Salesforce Tasks created from this week's lists">SF Tasks done</th>
+            <th class="px-2 py-2 font-medium text-right" title="Waiting on someone else, or overdue">Stuck</th>
+            <th class="px-2 py-2 font-medium text-right">Escalations</th>
+            <th class="px-2 py-2 font-medium text-right" title="Share of listed accounts that got feedback or a Salesforce Task, last weeks">Adoption</th>
+            <th class="px-4 py-2"><span class="sr-only">Open</span></th></tr>
+      </thead>
+      <tbody>
+        {% for t in teams %}
+          <tr>
+            <td class="px-4 py-2 font-medium">{{ t.manager.name }}</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ t.members | length }}</td>
+            <td class="px-2 py-2 text-right tabular-nums text-red-800">{{ t.revenue_at_risk | money }}</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ t.actioned }}/{{ t.act_now }}</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ t.done }}/{{ t.tasks }}</td>
+            <td class="px-2 py-2 text-right tabular-nums {{ 'text-amber-800' if t.blocked }}">{{ t.blocked }}</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ t.escalated }}</td>
+            <td class="px-2 py-2 text-right tabular-nums">{{ (t.adoption ~ '%') if t.adoption is not none else '–' }}</td>
+            <td class="px-4 py-2 text-right"><a href="/manager?team={{ t.manager.id }}" class="text-xs text-slate-500 hover:text-slate-900">Team view →</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <section class="card">
+    <h2 class="section-title px-5 pt-5">Top 10 risks across the org</h2>
+    <ol class="mt-2 divide-y divide-slate-100 text-sm">
+      {% for r in top_risks %}
+        {% set tk = open_tasks.get(r.account.id) %}
+        <li class="px-4 py-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <a href="/account/{{ r.account.id }}" class="font-medium hover:underline">{{ r.account.name }}</a>
+            {% if r.snap.category != 'act_now' %}<span class="pill {{ CATEGORY_PILL[r.snap.category] }}">{{ CATEGORY_LABELS[r.snap.category] }}</span>{% endif %}
+            <span class="ml-auto font-medium tabular-nums {{ 'text-red-800' if r.snap.revenue_at_risk else 'text-slate-400' }}" title="{{ '' if r.snap.revenue_at_risk else 'No revenue estimate for this signal type (e.g. chargebacks cost fees, not volume)' }}">{{ (r.snap.revenue_at_risk | money) if r.snap.revenue_at_risk else '–' }}</span>
+          </div>
+          <div class="text-xs text-slate-500">{{ r.owner }} ({{ r.team }}) · {{ r.reason.sentence if r.reason else '' }}</div>
+          <div class="text-xs">{% if tk %}<span class="rounded px-1.5 py-0.5 ring-1 ring-inset {{ SF_STATUS_PILL[tk.status] }}">Salesforce Task · {{ tk.status_label }}</span>{% else %}<span class="text-amber-800">No Salesforce Task yet</span>{% endif %}</div>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2 class="section-title px-5 pt-5">Renewal exposure: next 90 days</h2>
+    <ul class="mt-2 divide-y divide-slate-100 text-sm">
+      {% for a in renewals %}
+        <li class="flex flex-wrap items-center gap-2 px-4 py-2">
+          <span class="w-14 tabular-nums text-slate-500">{{ a.renewal_date | short_date }}</span>
+          <a href="/account/{{ a.id }}" class="font-medium hover:underline">{{ a.name }}</a>
+          <span class="text-xs text-slate-500">{{ a.segment }} · {{ names[a.owner_id] }}</span>
+          <span class="ml-auto tabular-nums">{{ a.arr_usd | money }}</span>
+          {% if a.id in at_risk_ids %}<span class="rounded bg-red-50 px-1.5 text-[11px] text-red-800">problems open</span>{% endif %}
+          {% if a.id in plan_ids %}<a href="/account/{{ a.id }}/plan" class="rounded bg-slate-100 px-1.5 text-[11px] text-slate-700">action plan</a>
+          {% elif a.segment == 'Enterprise' %}<span class="rounded bg-amber-50 px-1.5 text-[11px] text-amber-800">no action plan</span>{% endif %}
+        </li>
+      {% else %}<li class="px-4 py-3 text-slate-500">No renewals in the next 90 days.</li>{% endfor %}
+    </ul>
+  </section>
+</div>
+
+<div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <section class="card card-pad">
+    <h2 class="section-title">Does acting work?</h2>
+    <p class="mt-1 text-sm text-slate-600">Of the problem signals that topped a list in the last {{ weeks | length }} weeks:</p>
+    <dl class="mt-3 grid grid-cols-2 gap-3 text-sm">
+      <div class="rounded-md bg-emerald-50 p-3"><dt class="text-xs text-emerald-800">Actioned</dt>
+        <dd class="text-xl font-semibold tabular-nums">{{ outcome.actioned_rate if outcome.actioned_rate is not none else '–' }}%</dd>
+        <dd class="text-xs text-slate-600">cleared ({{ outcome.actioned_cleared }} of {{ outcome.actioned }})</dd></div>
+      <div class="rounded-md bg-slate-50 p-3"><dt class="text-xs text-slate-600">Not actioned</dt>
+        <dd class="text-xl font-semibold tabular-nums">{{ outcome.not_actioned_rate if outcome.not_actioned_rate is not none else '–' }}%</dd>
+        <dd class="text-xs text-slate-600">cleared ({{ outcome.not_actioned_cleared }} of {{ outcome.not_actioned }})</dd></div>
+    </dl>
+    <p class="mt-3 text-xs text-slate-400">A rough comparison, not proof: AMs choose what to act on, and this is demo data built so that acting helps. With real data, compare like-for-like accounts.</p>
+    {% if outcome.saved %}
+      <h3 class="eyebrow mt-4">Recovered after action</h3>
+      <ul class="mt-1 space-y-1 text-sm">
+        {% for i in outcome.saved[:5] %}<li><a href="/account/{{ i.account_id }}" class="hover:underline">{{ i.account }}</a>
+          <span class="text-xs text-slate-500">{{ i.signal_type.replace('_', ' ') }}, cleared in {{ i.days_to_clear }} days{% if i.revenue_at_risk %} · {{ i.revenue_at_risk | money }}{% endif %}</span></li>{% endfor %}
+      </ul>
+    {% endif %}
+  </section>
+
+  <section class="card card-pad">
+    <div class="flex items-baseline justify-between">
+      <h2 class="section-title">Model accuracy by signal</h2>
+      <a href="/calibration" class="text-xs text-slate-500 hover:text-slate-900">Calibrate →</a>
+    </div>
+    <table class="tbl mt-2">
+      <thead class="text-left text-xs text-slate-500"><tr><th class="py-1 font-medium">Signal</th><th class="py-1 font-medium text-right">Shown</th><th class="py-1 font-medium text-right">Acted</th><th class="py-1 font-medium text-right">↓/↑</th></tr></thead>
+      <tbody>
+        {% for r in accuracy if r.shown %}
+          <tr><td class="py-1">{{ r.signal_type.replace('_', ' ') }}</td><td class="py-1 text-right tabular-nums">{{ r.shown }}</td>
+            <td class="py-1 text-right tabular-nums">{{ r.acted_rate }}%</td><td class="py-1 text-right tabular-nums">{{ r.down }}/{{ r.up }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if fixes_open %}<p class="mt-3 text-xs text-amber-800">{{ fixes_open }} data-fix request{{ 's' if fixes_open != 1 }} open with source owners. <a href="/health#data-fixes" class="underline">See them</a></p>{% endif %}
+  </section>
+</div>
+{% endblock %}

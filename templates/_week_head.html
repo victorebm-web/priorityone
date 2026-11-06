@@ -1,0 +1,18 @@
+{# Card header on This Week: name, badges and one line of context. Expects row, p, a, top, full (true for a full card, false for a compact row). #}
+<div class="min-w-0 flex-1">
+  <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+    {% if full %}
+      <a href="/account/{{ a.id }}?week={{ selected.isoformat() }}" class="text-[17px] font-semibold tracking-tight hover:underline">{{ a.name }}</a>
+    {% else %}
+      <span class="font-semibold tracking-tight">{{ a.name }}</span>
+    {% endif %}
+    {% if p.partial %}
+      {% with stale = p.stale_sources, ref_day = today, tip_id = 'st-' ~ a.id %}{% include "_stale_badge.html" %}{% endwith %}
+    {% endif %}
+    {% if (today - a.customer_since).days < 365 %}<span class="pill bg-blue-50 text-blue-700 ring-blue-200">First year</span>{% endif %}
+    {% if row.carried %}<span class="pill bg-violet-50 text-violet-700 ring-violet-200" title="Urgent last week, nothing done since">{{ icon.clock("h-3 w-3") }} From last week{% if row.off_list %} · off this week's list{% endif %}</span>{% endif %}
+    {% if row.feedback %}<span class="pill bg-slate-100 text-slate-600 ring-slate-200">{{ {'acted': 'Handled', 'dismissed': 'Not now', 'wrongly_prioritised': 'Wrong priority'}[row.feedback.action] }}</span>{% endif %}
+  </div>
+  <div class="mt-0.5 text-[13px] text-slate-500">{{ a.segment }} · {{ a.arr_usd | money }} ARR{% if full %} · {{ a.vertical | capitalize }} · {{ a.region }}{% endif %}</div>
+  {% if not full and top %}<div class="mt-1 truncate text-sm text-slate-700 group-open:hidden">{{ top.sentence }}</div>{% endif %}
+</div>

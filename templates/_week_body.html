@@ -1,0 +1,135 @@
+{# Card body on This Week: reasons, suggested next steps and actions. Expects row, p, a, fb, top, full (see _week_head.html). #}
+{% set others = p.reasons_json | reject('sameas', top) | rejectattr('signal_type', 'equalto', 'resurfaced') | list %}
+
+{# Why: the top reason up front; the rest one click away #}
+{% if full %}
+  <ul class="mt-3 space-y-1.5 text-sm">{% for r in p.reasons_json if r.signal_type == 'resurfaced' %}{% include "_reason.html" %}{% endfor %}{% if top %}{% set r = top %}{% include "_reason.html" %}{% endif %}</ul>
+  {% if others %}
+    <details class="mt-1.5 text-sm">
+      <summary class="inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-900">{{ others | length }} more reason{{ 's' if others | length != 1 }}</summary>
+      <ul class="mt-1.5 space-y-1.5">{% for r in others %}{% include "_reason.html" %}{% endfor %}</ul>
+    </details>
+  {% endif %}
+{% else %}
+  <ul class="space-y-1.5 text-sm">{% for r in p.reasons_json %}{% include "_reason.html" %}{% endfor %}</ul>
+{% endif %}
+
+{# Suggested next steps: the first one up front, the rest folded #}
+{% set steps = row.steps %}
+{% if steps %}
+  {% set first = steps[0] %}
+  <div class="mt-3.5 flex flex-col gap-3 rounded-lg bg-slate-50 px-3 py-3 sm:flex-row sm:items-center sm:gap-4">
+    <div class="min-w-0 flex-1">
+      <div class="eyebrow mb-1.5">Suggested next step{{ 's' if steps | length > 1 }}</div>
+      <ul class="space-y-2">{% with st = first, primary = full, can_add = False %}{% include "_step.html" %}{% endwith %}</ul>
+      {% if steps | length > 1 %}
+        <details class="mt-1.5">
+          <summary class="inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-900">{{ steps | length - 1 }} more suggestion{{ 's' if steps | length > 2 }}</summary>
+          <ul class="mt-2 space-y-2">{% for st in steps[1:] %}{% with primary = False, can_add = is_current %}{% include "_step.html" %}{% endwith %}{% endfor %}</ul>
+        </details>
+      {% endif %}
+    </div>
+    {% if is_current and not first.task %}
+      <a href="/salesforce/tasks/new?account_id={{ a.id }}&signal_id={{ first.signal_id }}&step={{ first.title | urlencode }}&next={{ here | urlencode }}"
+         class="btn-sf shrink-0 self-start sm:self-center" title="Review the pre-filled Task for this step, then create it in Salesforce">{{ icon.plus("h-4 w-4") }} Add to Salesforce</a>
+    {% endif %}
+  </div>
+{% else %}
+  <p class="mt-3 flex gap-2 text-sm"><span class="mt-0.5 shrink-0 text-emerald-700">{{ icon.arrow() }}</span><span class="text-slate-800">{{ row.next_action }}</span></p>
+{% endif %}
+
+{# Actions #}
+<div class="mt-4 flex flex-wrap items-center gap-2">
+  {% if fb %}
+    <span class="text-[13px] text-slate-500">{{ {'acted': 'Handled', 'dismissed': 'Set aside', 'wrongly_prioritised': 'Marked wrong priority'}[fb.action] }} {{ fb.created_at | short_date }}{% if fb.reason_code %} · {{ REASON_LABELS.get(fb.reason_code, fb.reason_code) }}{% endif %}{% if fb.snooze_until %} · until {{ fb.snooze_until | short_date }}{% endif %}</span>
+    {% if is_current %}
+      <form method="post" action="/feedback/undo"><input type="hidden" name="snapshot_id" value="{{ p.id }}"><input type="hidden" name="next" value="{{ here }}">
+        <button class="btn-ghost btn-sm">Undo</button></form>
+    {% endif %}
+  {% endif %}
+  {% if is_current %}
+    <a href="/salesforce/tasks/new?account_id={{ a.id }}{% if steps %}&signal_id={{ steps[0].signal_id }}{% endif %}&next={{ here | urlencode }}"
+       class="btn-sf" title="Review a pre-filled Salesforce Task for {{ a.name }}, then create it">{{ icon.task("h-4 w-4") }} Create Task in Salesforce</a>
+    {% if row.email_to %}
+      <a href="/account/{{ a.id }}?week={{ selected.isoformat() }}&compose={{ row.email_to.id }}#messages" class="btn-secondary"
+         title="Draft an email to {{ row.email_to.name }} ({{ row.email_to.title }}), with colleagues in copy if you like">{{ icon.send() }} Email {{ row.email_to.first }}</a>
+    {% endif %}
+    {% set esc = row.escalate %}
+    {% set esc_to = esc.team if esc else 'manager' %}
+    <a href="/account/{{ a.id }}?week={{ selected.isoformat() }}&to={{ esc_to }}#messages" class="btn-ghost"
+       title="{% if esc %}Drafts an email to {{ esc.name }} ({{ esc.role }}): {{ esc.why }}{% else %}Draft an email to your manager or another team{% endif %}">{{ icon.escalate() }} Escalate{% if esc %} to {{ {'support': 'Support', 'risk': 'Risk', 'finance': 'Finance', 'product': 'Product'}.get(esc.team, esc.name.split()[0]) }}{% endif %}</a>
+    <a href="/account/{{ a.id }}?week={{ selected.isoformat() }}&to={{ esc_to }}&via=slack#messages" class="btn-ghost"
+       title="Drafts a Slack message{% if esc %} to {{ esc.slack }}{% endif %}, summarising the problem">{{ icon.hash() }} Slack</a>
+    {% if not fb and p.id %}
+      <details class="relative" data-popover>
+        <summary class="btn-ghost" aria-label="More actions for {{ a.name }}">{{ icon.dots() }}</summary>
+        <div class="popover w-60 p-1.5">
+          {% set to_plan = steps | default([]) | rejectattr('planned') | first %}
+          {% if to_plan %}
+            <a href="/next-steps/new?account_id={{ a.id }}&signal_id={{ to_plan.signal_id }}&step={{ to_plan.title | urlencode }}&next={{ here | urlencode }}"
+               class="flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50">{{ icon.clock("h-4 w-4") }}<span><span class="block font-medium">Plan next step…</span><span class="block text-xs text-slate-500">Book a call, meeting or email in Salesforce</span></span></a>
+          {% endif %}
+          <form method="post" action="/feedback"><input type="hidden" name="snapshot_id" value="{{ p.id }}"><input type="hidden" name="action" value="acted"><input type="hidden" name="next" value="{{ here }}">
+            <button class="flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50">{{ icon.check() }}<span><span class="block font-medium">Mark as handled</span><span class="block text-xs text-slate-500">You dealt with it another way</span></span></button></form>
+          <button type="button" data-open="dlg-later-{{ a.id }}" class="flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50">{{ icon.clock("h-4 w-4") }}<span><span class="block font-medium">Not now…</span><span class="block text-xs text-slate-500">Hide it, or snooze to a date</span></span></button>
+          <button type="button" data-open="dlg-wrong-{{ a.id }}" class="flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50">{{ icon.info() }}<span><span class="block font-medium">Wrong priority…</span><span class="block text-xs text-slate-500">Should rank lower or higher, or the data is wrong</span></span></button>
+        </div>
+      </details>
+    {% endif %}
+  {% endif %}
+  <a href="/account/{{ a.id }}?week={{ selected.isoformat() }}" class="ml-auto inline-flex items-center gap-1 text-[13px] text-slate-500 hover:text-slate-900">Details {{ icon.arrow("h-3.5 w-3.5") }}</a>
+  {% if row.pinned and is_current %}
+    <form method="post" action="/pins/remove"><input type="hidden" name="account_id" value="{{ a.id }}"><input type="hidden" name="next" value="{{ here }}">
+      <button class="btn-ghost btn-sm" title="Take it off this week's list">Remove</button></form>
+  {% endif %}
+</div>
+
+{# This week's status: worked out automatically, or set by the AM, with a note on how it was handled #}
+{% set ws = row.week_status %}
+{% if ws %}
+  {% set ws_dot = {"open": "bg-slate-300", "working": "bg-blue-500", "blocked": "bg-amber-500", "completed": "bg-emerald-500"} %}
+  <div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-slate-100 pt-3 text-[13px]">
+    <span class="text-slate-500">Status this week</span>
+    {% if is_current %}
+      <form method="post" action="/account-status" class="flex items-center gap-1.5" data-status-form="{{ a.id }}">
+        <input type="hidden" name="account_id" value="{{ a.id }}"><input type="hidden" name="next" value="{{ here }}">
+        <span class="h-2 w-2 rounded-full {{ ws_dot[ws.status] }}" aria-hidden="true"></span>
+        <label for="ws-{{ a.id }}" class="sr-only">Status of {{ a.name }} this week</label>
+        <select id="ws-{{ a.id }}" name="status" class="input w-auto py-1 text-[13px]" data-status-select="{{ a.id }}" data-current="{{ ws.status }}" autocomplete="off">
+          {% for k in week_status_keys %}<option value="{{ k }}" {{ 'selected' if k == ws.status }}>{{ week_status_labels[k] }}</option>{% endfor %}
+        </select>
+      </form>
+    {% else %}
+      <span class="inline-flex items-center gap-1.5 font-medium"><span class="h-2 w-2 rounded-full {{ ws_dot[ws.status] }}"></span>{{ week_status_labels[ws.status] }}</span>
+    {% endif %}
+    {% if ws.note %}<span class="min-w-0 flex-1 truncate text-slate-700" title="{{ ws.note }}">“{{ ws.note }}”</span>{% endif %}
+  </div>
+
+  {% if is_current %}{% include "_status_dialog.html" %}{% endif %}
+{% endif %}
+
+{# Meetings: planned next steps and recent recorded calls #}
+{% if row.meetings %}
+  <div class="mt-3 border-t border-slate-100 pt-3">
+    <div class="eyebrow mb-1.5">Meetings</div>
+    <ul class="space-y-1.5 text-[13px]">
+      {% for m in row.meetings %}
+        <li class="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span class="text-slate-400">{{ icon.clock("h-3.5 w-3.5") }}</span>
+          <span class="font-medium text-slate-800">{{ m.label }}</span>
+          <span class="text-slate-500">{{ m.when.strftime('%a %d %b') }}{% if not m.recorded %}, {{ m.when.strftime('%H:%M') }}{% endif %}</span>
+          {% if m.recorded %}
+            <a href="{{ m.link }}" target="_blank" rel="noopener" class="chip bg-white text-slate-600 ring-slate-200 hover:underline">Recorded in Gong {{ icon.external("h-2.5 w-2.5") }}</a>
+            {% if is_current %}
+              <button type="button" class="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-[12px] font-medium text-[#0176D3] hover:bg-[#EEF4FF]"
+                      data-use-transcript="{{ a.id }}" data-note="{{ m.note }}" title="Opens the completion note with a summary of this call's transcript">{{ icon.spark("h-3.5 w-3.5") }} Use transcript in completion note</button>
+            {% endif %}
+          {% else %}
+            <span class="chip {{ 'bg-emerald-50 text-emerald-800 ring-emerald-200' if m.upcoming else 'bg-slate-100 text-slate-600 ring-slate-200' }}">{{ 'Planned' if m.upcoming else 'Held' }}</span>
+            <span class="ml-auto text-[12px] text-slate-400">Transcript available after the call</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}

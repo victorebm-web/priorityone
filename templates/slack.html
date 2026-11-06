@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Slack preview · PriorityOne{% endblock %}
+{% block content %}
+<h1 class="page-title">Slack preview</h1>
+<p class="page-sub">What the PriorityOne Slack app would send {{ user.name.split()[0] }}: the Monday list, live alerts and a Friday nudge.
+  The buttons work: they're the same actions as on This Week.</p>
+
+<div class="mt-5 overflow-hidden card">
+  <div class="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-sm">
+    <span class="font-semibold">PriorityOne</span><span class="rounded bg-slate-200 px-1.5 text-[10px] uppercase text-slate-600">app</span>
+    <span class="text-slate-400">· direct message</span>
+  </div>
+  <div class="space-y-6 p-4 text-sm">
+    {# Live alerts first: they're the newest #}
+    {% for e in alerts %}
+      {% set a = accounts[e.account_id] %}
+      <article class="flex gap-3">
+        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-red-700 font-semibold text-white" aria-hidden="true">⚡</div>
+        <div class="min-w-0 flex-1">
+          <div><span class="font-semibold">PriorityOne</span> <span class="text-xs text-slate-400">{{ e.detected_on | short_date }} · alert</span></div>
+          <p class="mt-0.5"><b>{{ a.name }}</b> ({{ a.segment }}, {{ a.arr_usd | money }} ARR): {{ e.summary }}</p>
+          <div class="mt-2 flex flex-wrap gap-2">
+            {% set tk = sf_open.get((a.id, e.id)) %}
+            {% if tk %}<span class="rounded px-2 py-1 text-xs ring-1 ring-inset {{ SF_STATUS_PILL[tk.status] }}">Salesforce Task · {{ tk.status_label }}</span>
+            {% else %}
+            <a href="/salesforce/tasks/new?account_id={{ a.id }}&signal_id={{ e.id }}&next=%2Fslack" class="rounded border border-slate-300 px-3 py-1 font-medium hover:bg-slate-50">Create Salesforce Task</a>
+            {% endif %}
+            <a href="/account/{{ a.id }}" class="rounded border border-slate-300 px-3 py-1 hover:bg-slate-50">Open account</a>
+          </div>
+        </div>
+      </article>
+    {% endfor %}
+
+    <article class="flex gap-3">
+      <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-emerald-500 font-semibold text-slate-900" aria-hidden="true">P1</div>
+      <div class="min-w-0 flex-1">
+        <div><span class="font-semibold">PriorityOne</span> <span class="text-xs text-slate-400">Mon {{ current_week | short_date }} 08:00</span></div>
+        <p class="mt-0.5">Good morning {{ user.name.split()[0] }}. Here are your {{ shown | length }} for the week:</p>
+        <div class="mt-2 space-y-2 border-l-4 border-slate-200 pl-3">
+          {% for p in shown %}
+            {% set a = accounts[p.account_id] %}{% set fb = feedback.get(a.id) %}
+            {% set top = p.reasons_json | rejectattr('signal_type', 'equalto', 'resurfaced') | first %}
+            <div>
+              <div><b>{{ loop.index }}. {{ a.name }}</b> · {{ CATEGORY_LABELS[p.category] }}{% if p.revenue_at_risk %} · {{ p.revenue_at_risk | money }} at risk{% endif %}</div>
+              <div class="text-slate-600">{{ top.sentence if top else '' }}</div>
+              <div class="text-slate-500">→ {{ next_actions[a.id] }}</div>
+              <div class="mt-1 flex flex-wrap gap-2">
+                {% set tk = sf_open.get((a.id, top.signal_id)) if top else None %}
+                {% if tk %}<span class="rounded px-2 py-0.5 text-xs ring-1 ring-inset {{ SF_STATUS_PILL[tk.status] }}">Salesforce Task · {{ tk.status_label }}</span>{% endif %}
+                {% if fb %}<span class="text-xs text-emerald-700">✓ {{ ACTION_LABELS[fb.action] }}</span>
+                {% else %}
+                  <form method="post" action="/feedback"><input type="hidden" name="snapshot_id" value="{{ p.id }}"><input type="hidden" name="action" value="acted">
+                    <input type="hidden" name="next" value="/slack"><button class="rounded border border-slate-300 px-2.5 py-0.5 text-xs font-medium hover:bg-slate-50">Act on this</button></form>
+                  {% if top and top.signal_id %}
+                    <a href="/salesforce/tasks/new?account_id={{ a.id }}&signal_id={{ top.signal_id }}&next=%2Fslack" class="rounded border border-slate-300 px-2.5 py-0.5 text-xs hover:bg-slate-50">Create Salesforce Task</a>
+                  {% endif %}
+                  <form method="post" action="/feedback"><input type="hidden" name="snapshot_id" value="{{ p.id }}"><input type="hidden" name="action" value="dismissed">
+                    <input type="hidden" name="reason_code" value="not_this_week"><input type="hidden" name="snooze_until" value="{{ (current_week + timedelta(days=14)).isoformat() }}">
+                    <input type="hidden" name="next" value="/slack"><button class="rounded border border-slate-300 px-2.5 py-0.5 text-xs hover:bg-slate-50">Snooze 2 weeks</button></form>
+                {% endif %}
+                <a href="/account/{{ a.id }}" class="rounded border border-slate-300 px-2.5 py-0.5 text-xs hover:bg-slate-50">Open</a>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+        {% if hygiene %}<p class="mt-2 text-slate-500">Plus {{ hygiene | length }} hygiene item{{ 's' if hygiene | length != 1 }} (QBRs, quiet accounts) in the app.</p>{% endif %}
+      </div>
+    </article>
+
+    <article class="flex gap-3 opacity-80">
+      <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-emerald-500 font-semibold text-slate-900" aria-hidden="true">P1</div>
+      <div class="min-w-0 flex-1">
+        <div><span class="font-semibold">PriorityOne</span> <span class="text-xs text-slate-400">Fri {{ (current_week + timedelta(days=4)) | short_date }} 15:00 · scheduled</span></div>
+        <p class="mt-0.5">End-of-week check: {{ sf.completed }} of {{ sf.created }} Salesforce Task{{ 's' if sf.created != 1 }} from this week's list done,
+          {{ sf.open }} open{% if sf.waiting %}, <b>{{ sf.waiting | length }} waiting on someone else</b>{% endif %}{% if sf.overdue %}, <b>{{ sf.overdue | length }} overdue</b>{% endif %}.
+          {% if sf.overdue %}Update due dates in Salesforce for anything that won't happen, so Monday's list starts clean.{% endif %}</p>
+        <a href="/" class="mt-2 inline-block rounded border border-slate-300 px-3 py-1 hover:bg-slate-50">Open This Week</a>
+      </div>
+    </article>
+  </div>
+</div>
+<p class="mt-3 text-xs text-slate-400">Preview only. In production this would be a Slack app (Block Kit messages with interactive buttons calling the same endpoints).
+  Alerts appear here as soon as a critical signal is detected; try <a href="/health#simulate" class="underline">Health → Simulate an incident</a>.</p>
+{% endblock %}
